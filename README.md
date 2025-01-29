@@ -45,13 +45,13 @@ BaseModel：https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
 
 ### 实验结果
 
-对比BaseModel和训练之后的Model
+| 模型         | 准确率 | 训练轮次 | 花费 | 硬件配置 |
+| ------------ | ------ | -------- | ---- | -------- |
+| BaseModel    |        | -        | -    | -        |
+| r1蒸馏 + SFT | ？     | 2        | ？   | ？       |
+| GRPO         | ？     | 2        | ？   | ？       |
 
-待补充
-
-
-
-
+实验结果待补充，r1蒸馏的方案是调用deepseek-r1模型得到训练集的思维链回复，然后再用这些数据全量微调BaseModel；GRPO是使用本仓库的方法微调。
 
 
 
