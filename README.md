@@ -47,6 +47,8 @@ BaseModel：https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
 
 对比BaseModel和训练之后的Model
 
+待补充
+
 
 
 
