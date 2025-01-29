@@ -11,17 +11,18 @@ from .grpo_reward_fn import reward_fn
 if __name__ == '__main__':
 
     current_dir =  os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
+
     last_time = time.time()
     model_dir = os.path.join(current_dir, 'model')
     log_dir = os.path.join(current_dir, 'log')
     buffer_file = os.path.join(current_dir, 'data', 'buffer.json')
+    train_file = os.path.join(current_dir, 'data', 'train.csv')
 
     while not os.path.exists(buffer_file):
         time.sleep(10)
     
     print('find buffer.json, start load data...')
-    train_dataset = GRPODataset(buffer_file)
+    train_dataset = GRPODataset(buffer_file, train_file)
 
     model = AutoModelForCausalLM.from_pretrained(model_dir)
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
@@ -33,7 +34,7 @@ if __name__ == '__main__':
     # 设置训练参数
     training_args = GRPOConfig(
         output_dir=model_dir, 
-        num_train_epochs=10, # 
+        num_train_epochs=2, # 
         per_device_train_batch_size=2,
         gradient_accumulation_steps=1,
         evaluation_strategy="epoch",
