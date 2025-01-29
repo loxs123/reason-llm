@@ -28,7 +28,6 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    GenerationConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
     Trainer,
@@ -319,7 +318,6 @@ class GRPOTrainer(Trainer):
         if not hasattr(self, 'start_train_time'):
             self.start_train_time = time.time()
 
-
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
         
@@ -351,7 +349,7 @@ class GRPOTrainer(Trainer):
         per_token_logps = get_per_token_logps(model, prompt_completion_ids)
         # # Get rid of the prompt (-1 because of the shift done in get_per_token_logps)
         # per_token_logps = per_token_logps[:, prompt_length - 1 :]
-        
+
         with torch.inference_mode():
             if self.ref_model is not None:
                 ref_per_token_logps = get_per_token_logps(self.ref_model, prompt_completion_ids)
@@ -428,7 +426,7 @@ class GRPOTrainer(Trainer):
         output_dir = self._get_output_dir()
         output_file = os.path.join(output_dir, 'config.json')
         # first
-        save_interval_time = os.environ.get('INT_TIME', 20 * 60 * 1000) # ms
+        save_interval_time = os.environ.get('INT_TIME', 20 * 60) # s
         if time.time() - self.start_train_time > save_interval_time and not hasattr(self, 'start_save'):
             self.start_save = True
             self.save_model(self._get_output_dir())

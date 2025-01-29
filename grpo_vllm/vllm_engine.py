@@ -4,7 +4,6 @@ import csv
 import copy
 import json
 
-import torch
 from vllm import LLM, SamplingParams
 
 from transformers import LogitsProcessor
@@ -101,6 +100,11 @@ while True:
 
         # TODO: 可以从中挑选几个回答好的保存，保证奖励方差
 
+        if not os.path.exists(buffer_file) and len(cur_msgs) >= 5:
+            with open(buffer_file,'w') as f:
+                json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
+            cur_msgs.clear()
+
         if os.path.getmtime(os.path.join(model_dir, 'config.json')) > last_time:
             with open(buffer_file,'w') as f:
                 json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
@@ -117,6 +121,3 @@ while True:
                 max_num_seqs = 32,
                 gpu_memory_utilization=0.96, 
             )
-
-
-
