@@ -14,8 +14,10 @@ model_dir = ''
 buffer_file = ''
 data_file = ''
 
-os.environ["CUDA_VISIBLE_DEVICES"]   = "1" # 0卡用来训练
+os.environ["CUDA_VISIBLE_DEVICES"] = "1" # 0卡用来训练
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+num_gpu = 1
 
 MAX_MODEL_LEN = 8192
 
@@ -108,11 +110,13 @@ while True:
             cur_msgs.clear()
             del llm
 
+            last_time = os.path.getmtime(os.path.join(model_dir, 'config.json'))
+
             llm = LLM(
                 model_dir,
                 max_model_len=MAX_MODEL_LEN, # 4096*10,
                 trust_remote_code=True,
-                tensor_parallel_size=4,
+                tensor_parallel_size=num_gpu,
                 max_num_seqs = 32,
                 gpu_memory_utilization=0.96, 
             )
