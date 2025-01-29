@@ -9,23 +9,21 @@ from vllm import LLM, SamplingParams
 
 from transformers import LogitsProcessor
 
+current_dir =  os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 last_time = time.time()
-model_dir = ''
-buffer_file = ''
-data_file = ''
+model_dir = os.path.join(current_dir, 'model')
+buffer_file = os.path.join(current_dir, 'data', 'buffer.json')
+data_file = os.path.join(current_dir, 'data', 'train.csv')
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1" # 0卡用来训练
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-num_gpu = 1
-
+GPU_NUM = 1
 MAX_MODEL_LEN = 8192
 
 llm = LLM(
     model_dir,
     max_model_len=MAX_MODEL_LEN, # 4096*10,
     trust_remote_code=True,
-    tensor_parallel_size=4,
+    tensor_parallel_size=GPU_NUM,
     max_num_seqs = 32,
     gpu_memory_utilization=0.96, 
 )
@@ -99,7 +97,7 @@ while True:
     for line in lines:
         msgs = [[{'role': 'user', 'content': line['question']}]] * 32
         processed_msgs = batch_message_generate(msgs, llm)
-        cur_msgs.append({'completion' : processed_msgs, 'label': line['label']})
+        cur_msgs.append({'completion' : processed_msgs, 'label': line['answer']})
 
         # TODO: 可以从中挑选几个回答好的保存，保证奖励方差
 
@@ -111,12 +109,11 @@ while True:
             del llm
 
             last_time = os.path.getmtime(os.path.join(model_dir, 'config.json'))
-
             llm = LLM(
                 model_dir,
                 max_model_len=MAX_MODEL_LEN, # 4096*10,
                 trust_remote_code=True,
-                tensor_parallel_size=num_gpu,
+                tensor_parallel_size=GPU_NUM,
                 max_num_seqs = 32,
                 gpu_memory_utilization=0.96, 
             )
