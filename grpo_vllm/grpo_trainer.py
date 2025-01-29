@@ -312,7 +312,7 @@ class GRPOTrainer(Trainer):
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """inputs = [
-                {'completion': [ {'messages': []}, {'messages': []}, ...  ], 'label': '12'},
+                {'completion': [[ {'role': 'user', 'content': 'question'}, {role': 'assistant', 'content': 'answer'}], ...  ], 'label': '12'},
                 ...   
             ]
         """
