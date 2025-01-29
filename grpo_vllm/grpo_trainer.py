@@ -426,7 +426,7 @@ class GRPOTrainer(Trainer):
         output_dir = self._get_output_dir()
         output_file = os.path.join(output_dir, 'config.json')
         # first
-        save_interval_time = os.environ.get('INT_TIME', 20 * 60) # s
+        save_interval_time = self.args.int_time # s
         if time.time() - self.start_train_time > save_interval_time and not hasattr(self, 'start_save'):
             self.start_save = True
             self.save_model(self._get_output_dir())
