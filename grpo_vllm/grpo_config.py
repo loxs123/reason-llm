@@ -59,7 +59,7 @@ class GRPOConfig(TrainingArguments):
         beta (`float`, *optional*, defaults to `0.04`):
             KL coefficient.
     """
-
+    
     # Parameters that control the model and reference model
     model_init_kwargs: Optional[dict] = field(
         default=None,

@@ -1,4 +1,5 @@
 from copy import deepcopy
+import torch
 from accelerate.utils import is_deepspeed_available
 
 if is_deepspeed_available():
@@ -36,3 +37,15 @@ def prepare_deepspeed(model, accelerator):
     model, *_ = deepspeed.initialize(model=model, config=config_kwargs)
     model.eval()
     return model
+
+
+def create_prefix_mask(input_ids, assistant_id):
+    mask = torch.zeros_like(input_ids)  # 初始化全零矩阵
+    
+    for i, row in enumerate(input_ids):
+        # 找到最后一个 assistant_id 在当前行的索引
+        assistant_idx = (row == assistant_id).nonzero(as_tuple=True)[0]
+        if len(assistant_idx) > 0:
+            mask[i, assistant_idx[-1]:] = 1.0  # 从最后一个 assistant_id 位置开始置 1
+    
+    return mask

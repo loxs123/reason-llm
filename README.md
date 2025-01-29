@@ -25,9 +25,11 @@ Huggingface 的 TRL 库中，GRPO 的采样过程通过调用 `model.generate` �
 
 ```
 
+### 使用场景
+
+单机多卡
+
 ### 改进思路
-
-
 
 使用VLLM加速推理，从而节省训练时间。
 
