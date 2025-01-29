@@ -56,5 +56,11 @@ BaseModel：https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
 
 实验结果待补充，r1蒸馏的方案是调用deepseek-r1模型得到训练集的思维链回复，然后再用这些数据全量微调BaseModel；GRPO是使用本仓库的方法微调。
 
+### 参考
+
+简单实现rlhf+vllm：https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/rlhf.py
+
+PPO+vllm：https://github.com/OpenRLHF/OpenRLHF/blob/main/openrlhf/cli/train_ppo_ray.py
+
 
 
