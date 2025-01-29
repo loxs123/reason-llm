@@ -1,6 +1,6 @@
 # GRPO-VLLM
 
-动机：Huggingface的trl库中GRPO的采样是通过调用model.generate来实现的，非常消耗训练时长，本仓库将对这个问题进行改进。
+动机：Huggingface 的 TRL 库中，GRPO 的采样过程通过调用 `model.generate` 实现，这种方式在训练过程中耗时较长。为了解决这一问题，本仓库将对此进行优化和改进。
 
 ```python
 
@@ -22,7 +22,6 @@
 
 
 ```
-
 
 
 改进思路：使用VLLM加速推理，从而节省训练时间。
