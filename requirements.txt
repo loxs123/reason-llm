@@ -1,0 +1,4 @@
+vllm
+transformers
+trl
+accelerate
