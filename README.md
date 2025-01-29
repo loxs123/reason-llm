@@ -70,7 +70,7 @@ train.csv 格式
 | question                                                     | answer |
 | ------------------------------------------------------------ | ------ |
 | Let $x$ , $y$ and $z$ all exceed $1$ and let $w$ be a positive number such that $\log_xw=24$ , $\log_y w = 40$ and $\log_{xyz}w=12$ . Find $\log_zw$ . | 60     |
-| Let $f(x)=|x-p|+|x-15|+|x-p-15|$ , where $0 < p < 15$ . Determine the minimum value taken by $f(x)$ for $x$ in the interval $p \leq x\leq15$ . | 15     |
+| Let $f(x)=\|x-p\|+\|x-15\|+\|x-p-15\|$ , where $0 < p < 15$ . Determine the minimum value taken by $f(x)$ for $x$ in the interval $p \leq x\leq15$ . | 15     |
 | What is the product of the real roots of the equation $x^2 + 18x + 30 = 2 \sqrt{x^2 + 18x + 45}$ ? | 20     |
 
 model 目录：最开始的时候放BaseModel（记得在其余地方备份），在训练过程中会动态更新模型。
