@@ -1,6 +1,6 @@
 import os
 
-os.environ['HF_HOME'] = '/root/shared-stroge'
+os.environ['HF_HOME'] = '/root/shared-storage'
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
