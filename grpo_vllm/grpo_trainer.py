@@ -241,19 +241,12 @@ class GRPOTrainer(Trainer):
 
         # Data collator
         def data_collator(features):  # No data collation is needed in GRPO
+            # ans = {}
+            # for key in features[0]:
+            #     ans[key] = [item[key] for item in features]
             return features
+            # return ans
 
-        # Training arguments
-        # self.max_prompt_length = args.max_prompt_length
-        # self.max_completion_length = args.max_completion_length  # = |o_i| in the GRPO paper
-        # self.num_generations = args.num_generations  # = G in the GRPO paper
-        # self.generation_config = GenerationConfig(
-        #     max_new_tokens=self.max_completion_length,
-        #     do_sample=True,
-        #     temperature=args.temperature,
-        #     num_return_sequences=self.num_generations,
-        #     pad_token_id=processing_class.pad_token_id,
-        # )
         self.beta = args.beta
 
         # The trainer estimates the number of FLOPs (floating-point operations) using the number of elements in the
@@ -304,10 +297,10 @@ class GRPOTrainer(Trainer):
         if self._signature_columns is None:
             self._signature_columns = ["prompt"]
 
-    # Trainer "prepares" the inputs before calling `compute_loss`. It converts to tensor and move to device.
-    # Since we preprocess the data in `compute_loss`, we need to override this method to skip this step.
-    def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
-        return inputs
+    # # Trainer "prepares" the inputs before calling `compute_loss`. It converts to tensor and move to device.
+    # # Since we preprocess the data in `compute_loss`, we need to override this method to skip this step.
+    # def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+    #     return inputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """inputs = [
@@ -321,18 +314,20 @@ class GRPOTrainer(Trainer):
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
         
-        prompts_text = [maybe_apply_chat_template(example, self.processing_class)["text"] for examples in inputs for example in examples['completion']]
+        prompts_text = [maybe_apply_chat_template({'messages': example }, self.processing_class)["text"][:2048] for examples in inputs for example in examples['completion']]
         # [ batch11, batch12, batch13, batch21, ... ]
         
         prompt_inputs = self.processing_class(
             prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
-        )
+        )['input_ids']
         # only for single turn
         assistant_id = self.processing_class('<｜Assistant｜>', add_special_tokens=False)['input_ids'][0]
         prefix_mask = create_prefix_mask(prompt_inputs, assistant_id)
         prompt_completion_ids = super()._prepare_inputs(prompt_inputs)
         prefix_mask = super()._prepare_inputs(prefix_mask)[:, 1: ] # [bs, sl]
+        
         device = self.accelerator.device
+
         # Get the per-token log probabilities for the completions for the model and the reference model
         def get_per_token_logps(model, input_ids):
             logits = model(input_ids).logits  # (B, L, V)
@@ -362,14 +357,14 @@ class GRPOTrainer(Trainer):
         per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
 
         batch_size = len(inputs)
-        num_generations = len(inputs[0])
+        num_generations = len(inputs[0]['completion'])
 
         rewards_per_func = torch.zeros(batch_size * num_generations, len(self.reward_funcs), device=device)
         for i, (reward_func, reward_processing_class) in enumerate(
             zip(self.reward_funcs, self.reward_processing_classes)
         ):
             if isinstance(reward_func, PreTrainedModel):
-                texts = [apply_chat_template(example, reward_processing_class)["text"] for examples in inputs for example in examples['completion']]
+                texts = [apply_chat_template({'messages': example }, reward_processing_class)["text"] for examples in inputs for example in examples['completion']]
 
                 reward_inputs = reward_processing_class(
                     texts, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
@@ -402,8 +397,8 @@ class GRPOTrainer(Trainer):
         # x - x.detach() allows for preserving gradients from x
         per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
         per_token_loss = -(per_token_loss - self.beta * per_token_kl)
+        
         loss = ((per_token_loss * prefix_mask).sum(dim=1) / prefix_mask.sum(dim=1)).mean()
-
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(prefix_mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)
@@ -423,23 +418,19 @@ class GRPOTrainer(Trainer):
         mean_kl = ((per_token_kl * prefix_mask).sum(dim=1) / prefix_mask.sum(dim=1)).mean()
         self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
-        output_dir = self._get_output_dir()
+        output_dir = self._get_output_dir(None)
         output_file = os.path.join(output_dir, 'config.json')
         # first
         save_interval_time = self.args.int_time # s
         if time.time() - self.start_train_time > save_interval_time and not hasattr(self, 'start_save'):
             self.start_save = True
-            self.save_model(self._get_output_dir())
-            self.tokenizer.save_pretrained(self._get_output_dir())
+            self.save_model(self._get_output_dir(None))
+            self.tokenizer.save_pretrained(self._get_output_dir(None))
         # next time
         elif time.time() - os.path.getmtime(output_file) > save_interval_time and hasattr(self, 'start_save'):
-            self.save_model(self._get_output_dir())
-            self.tokenizer.save_pretrained(self._get_output_dir())
+            self.save_model(self._get_output_dir(None))
+            self.tokenizer.save_pretrained(self._get_output_dir(None))
 
-        # # 20 分钟 更新一次 buffer
-        # while time.time() - self.train_dataset.last_change_mtime() > save_interval_time:
-        #     time.sleep(10)
-        
         return loss
 
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:

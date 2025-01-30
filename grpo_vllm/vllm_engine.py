@@ -17,13 +17,15 @@ data_file = os.path.join(current_dir, 'data', 'train.csv')
 
 GPU_NUM = 1
 MAX_MODEL_LEN = 8192
+SAMPLE_NUM = 8
+MAX_NUM_SEQ = 32
 
 llm = LLM(
     model_dir,
     max_model_len=MAX_MODEL_LEN, # 4096*10,
     trust_remote_code=True,
     tensor_parallel_size=GPU_NUM,
-    max_num_seqs = 32,
+    max_num_seqs = MAX_NUM_SEQ,
     gpu_memory_utilization=0.96, 
 )
 
@@ -89,35 +91,52 @@ def batch_message_generate(list_of_messages, llm_model) -> list[list[dict]]:
 
 cur_msgs = []
 
+buffer_msgs = []
+buffer_labels = []
+
 while True:
     with open(data_file, ) as f:
         lines = csv.DictReader(f)
+        
+        for line in lines:
+            msgs = [ [{'role': 'user', 'content': line['question']}] for _ in range(SAMPLE_NUM) ]
+            buffer_msgs.append(msgs)
+            buffer_labels.append(line['answer'])
+
+            if len(buffer_msgs) * SAMPLE_NUM >= MAX_NUM_SEQ:
+
+                _msgs = []
+                for _m in buffer_msgs:
+                    _msgs += _m
+                
+                processed_msgs = batch_message_generate(_msgs, llm)
+                
+                for i in range(0, len(processed_msgs), SAMPLE_NUM):
+                    cur_msgs.append({'completion' : processed_msgs[i:i+SAMPLE_NUM], 'label': buffer_labels[i // SAMPLE_NUM]})
+                buffer_msgs.clear()
+                buffer_labels.clear()
+            
+            # TODO: 可以从中挑选几个回答好的保存，保证奖励方差
     
-    for line in lines:
-        msgs = [[{'role': 'user', 'content': line['question']}]] * 32
-        processed_msgs = batch_message_generate(msgs, llm)
-        cur_msgs.append({'completion' : processed_msgs, 'label': line['answer']})
+            if not os.path.exists(buffer_file) and len(cur_msgs) >= 4:
+                with open(buffer_file,'w') as f:
+                    json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
+                cur_msgs.clear()
+    
+            if os.path.getmtime(os.path.join(model_dir, 'config.json')) > last_time:
+                with open(buffer_file,'w') as f:
+                    json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
+    
+                cur_msgs.clear()
+                del llm
+    
+                last_time = os.path.getmtime(os.path.join(model_dir, 'config.json'))
+                llm = LLM(
+                    model_dir,
+                    max_model_len=MAX_MODEL_LEN, # 4096*10,
+                    trust_remote_code=True,
+                    tensor_parallel_size=GPU_NUM,
+                    max_num_seqs = MAX_NUM_SEQ,
+                    gpu_memory_utilization=0.96, 
+                )
 
-        # TODO: 可以从中挑选几个回答好的保存，保证奖励方差
-
-        if not os.path.exists(buffer_file) and len(cur_msgs) >= 5:
-            with open(buffer_file,'w') as f:
-                json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
-            cur_msgs.clear()
-
-        if os.path.getmtime(os.path.join(model_dir, 'config.json')) > last_time:
-            with open(buffer_file,'w') as f:
-                json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
-
-            cur_msgs.clear()
-            del llm
-
-            last_time = os.path.getmtime(os.path.join(model_dir, 'config.json'))
-            llm = LLM(
-                model_dir,
-                max_model_len=MAX_MODEL_LEN, # 4096*10,
-                trust_remote_code=True,
-                tensor_parallel_size=GPU_NUM,
-                max_num_seqs = 32,
-                gpu_memory_utilization=0.96, 
-            )

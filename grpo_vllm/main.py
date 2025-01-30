@@ -1,16 +1,23 @@
 import os
 import time
+import sys
 import datetime
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from .grpo_trainer import GRPOTrainer
-from .grpo_config import GRPOConfig
-from .grpo_dataset import GRPODataset
-from .grpo_reward_fn import reward_fn
+current_dir =  os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(current_dir)
+
+from peft import LoraConfig
+
+from trl import get_peft_config
+
+from grpo_vllm import GRPOTrainer
+from grpo_vllm import GRPOConfig
+from grpo_vllm import GRPODataset
+from grpo_vllm import reward_fn
+
 
 if __name__ == '__main__':
-
-    current_dir =  os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     last_time = time.time()
     model_dir = os.path.join(current_dir, 'model')
@@ -35,16 +42,32 @@ if __name__ == '__main__':
     training_args = GRPOConfig(
         output_dir=model_dir, 
         num_train_epochs=2, # 
-        per_device_train_batch_size=2,
+        per_device_train_batch_size=1,
         gradient_accumulation_steps=1,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
+        save_strategy="no",
         logging_dir=f"{log_dir}/{experiment_name}",
         report_to="tensorboard",               # 启用 TensorBoard
         overwrite_output_dir=True, 
         save_only_model=True,
         weight_decay=0.01, # L2正则化
+        bf16=True,  # 启用 bf16
     )
 
-    trainer = GRPOTrainer(model, [reward_fn], training_args, train_dataset)
+    # 使用peft
+    peft_config = LoraConfig(
+        task_type="CAUSAL_LM",
+        r=16,  
+        target_modules=["q_proj", "v_proj"],  
+        lora_alpha=32,  
+        lora_dropout=0.1,  
+        bias="none",  
+        use_rslora=False,  
+        modules_to_save=None  
+    )
+
+    trainer = GRPOTrainer(model, [reward_fn], training_args, train_dataset, peft_config=peft_config)
     trainer.train()
+
+    # # 全量
+    # trainer = GRPOTrainer(model, [reward_fn], training_args, train_dataset)
+    # trainer.train()
