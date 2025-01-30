@@ -2,32 +2,15 @@
 
 ### 动机
 
-Huggingface 的 TRL 库中，GRPO 的采样过程通过调用 `model.generate` 实现，这种方式在训练过程中耗时较长。为了解决这一问题，本仓库将对此进行优化和改进。
+1. 当前VLLM+GRPO算法的开源代码比较匮乏。
 
-```python
+2. 当前支持 VLLM+GRPO算法 的开源训练库，例如trl [commit](https://example.comhttps://github.com/huggingface/trl/commit/ed14ed90438860fc59b8b7694d4e103a2a146a57#diff-3dccaf6ed3f406ca989a3fe919c767e614cfc90ba81a8a761567ff5ca2cb97dd)，同一问题的不同回答只能放在同一批次中，如果需要设置句长比较大的时候（微调 r1 模型），容易出现OOM。
 
-# https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py 【24.01.28】
- def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-     if return_outputs:
-         raise ValueError("The GRPOTrainer does not support returning outputs")
-     
-     ...
-        
-     # Generate completions
-     with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
-         prompt_completion_ids = unwrapped_model.generate(**prompt_inputs, generation_config=self.generation_config) # speed much time
-         # self.num_generations has been set in self.generation_config
-     
-     ...
+本仓库将针对这两个问题进行改进，旨在做到两点：
 
-     return loss
+1. 支持VLLM加速采样，并且实现并行训练和采样。
 
-```
-
-24年1月30日发现Huggingface官方已经提交了 [commit](https://example.comhttps://github.com/huggingface/trl/commit/ed14ed90438860fc59b8b7694d4e103a2a146a57#diff-3dccaf6ed3f406ca989a3fe919c767e614cfc90ba81a8a761567ff5ca2cb97dd) ，支持VLLM加速的GRPO算法，然而如果想对r1继续做强化学习，需要更大的句长8192左右比较合适，这个版本跑不了这么大的句长。
-
-本仓库将针对这两个问题进行改进。
-
+2. 同一问题的不同回答可以出现在不同批次中，以支持微调更大的句长。
 
 ### 使用场景
 
