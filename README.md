@@ -24,7 +24,10 @@ Huggingface 的 TRL 库中，GRPO 的采样过程通过调用 `model.generate` �
 
 ```
 
-24年1月30日发现Huggingface官方已经提交了 https://github.com/huggingface/trl/commit/ed14ed90438860fc59b8b7694d4e103a2a146a57#diff-3dccaf6ed3f406ca989a3fe919c767e614cfc90ba81a8a761567ff5ca2cb97dd 这个版本，支持VLLM加速的GRPO算法，本仓库刚刚运行成功peft版本的grpo，由于官方出手，因此本仓库不再更新。
+24年1月30日发现Huggingface官方已经提交了 [commit]([https://example.com](https://github.com/huggingface/trl/commit/ed14ed90438860fc59b8b7694d4e103a2a146a57#diff-3dccaf6ed3f406ca989a3fe919c767e614cfc90ba81a8a761567ff5ca2cb97dd)) ，支持VLLM加速的GRPO算法，然而如果想对r1继续做强化学习，需要更大的句长8192左右比较合适，这个版本跑不了这么大的句长。
+
+本仓库将针对这两个问题进行改进。
+
 
 ### 使用场景
 
