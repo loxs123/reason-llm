@@ -20,7 +20,8 @@ if __name__ == '__main__':
     log_dir = os.path.join(current_dir, 'log')
     buffer_file = os.path.join(current_dir, 'data', 'buffer.json')
     train_file = os.path.join(current_dir, 'data', 'train.csv')
-
+    
+    print('waiting buffer...')
     while not os.path.exists(buffer_file):
         time.sleep(10)
     
@@ -39,7 +40,7 @@ if __name__ == '__main__':
         output_dir=model_dir, 
         num_train_epochs=2, # 
         per_device_train_batch_size=1,
-        gradient_accumulation_steps=1,
+        gradient_accumulation_steps=4,
         save_strategy="no",
         logging_dir=f"{log_dir}/{experiment_name}",
         report_to="tensorboard",               # 启用 TensorBoard
@@ -52,9 +53,9 @@ if __name__ == '__main__':
     # 使用peft
     peft_config = LoraConfig(
         task_type="CAUSAL_LM",
-        r=16,  
-        target_modules=["q_proj", "v_proj"],  
-        lora_alpha=32,  
+        r=32,  
+        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],  
+        lora_alpha=64,  
         lora_dropout=0.1,  
         bias="none",  
         use_rslora=False,  

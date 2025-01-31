@@ -252,7 +252,7 @@ class GRPOTrainer(Trainer):
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
         
-        prompts_text = [maybe_apply_chat_template({'messages': example['completion'] }, self.processing_class)["text"] for example in inputs]
+        prompts_text = [maybe_apply_chat_template({'messages': example['completion'] }, self.processing_class)["text"][:self.args.max_seq_length] for example in inputs]
 
         prompt_inputs = self.processing_class(
             prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False

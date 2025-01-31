@@ -26,6 +26,8 @@ SAMPLE_NUM = 8
 MAX_NUM_SEQ = 32
 GPU_NUM = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
 
+START_MSG_NUM = 320
+
 assert MAX_NUM_SEQ % SAMPLE_NUM == 0
 
 def apply_lora():
@@ -185,7 +187,7 @@ while True:
                 buffer_msgs.clear()
                 buffer_labels.clear()
     
-            if not os.path.exists(buffer_file) and len(cur_msgs) >= 4:
+            if not os.path.exists(buffer_file) and len(cur_msgs) >= START_MSG_NUM:
                 with open(buffer_file,'w') as f:
                     json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
                 cur_msgs.clear()
