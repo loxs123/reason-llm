@@ -4,7 +4,7 @@
 
 1. 当前VLLM+GRPO算法的开源代码比较匮乏。
 
-2. 当前支持 VLLM+GRPO算法 的开源训练库，例如trl [commit](https://example.comhttps://github.com/huggingface/trl/commit/ed14ed90438860fc59b8b7694d4e103a2a146a57#diff-3dccaf6ed3f406ca989a3fe919c767e614cfc90ba81a8a761567ff5ca2cb97dd)，同一问题的不同回答只能放在同一批次中，如果需要设置句长比较大的时候（微调 r1 模型），容易出现OOM。
+2. 当前支持 VLLM+GRPO算法 的开源训练库，例如trl [commit](https://github.com/huggingface/trl/commit/ed14ed90438860fc59b8b7694d4e103a2a146a57#diff-3dccaf6ed3f406ca989a3fe919c767e614cfc90ba81a8a761567ff5ca2cb97dd)，同一问题的不同回答只能放在同一批次中，如果需要设置句长比较大的时候（微调 r1 模型），容易出现OOM。
 
 本仓库将针对这两个问题进行改进，旨在做到两点：
 

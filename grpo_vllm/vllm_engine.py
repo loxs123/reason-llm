@@ -21,7 +21,6 @@ model_dir = os.path.join(current_dir, 'model')
 buffer_file = os.path.join(current_dir, 'data', 'buffer.json')
 data_file = os.path.join(current_dir, 'data', 'train.csv')
 
-
 MAX_MODEL_LEN = 8192
 SAMPLE_NUM = 8
 MAX_NUM_SEQ = 32
