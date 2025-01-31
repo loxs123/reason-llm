@@ -12,8 +12,6 @@ from peft import LoraConfig
 from grpo_vllm import GRPOTrainer
 from grpo_vllm import GRPOConfig
 from grpo_vllm import GRPODataset
-from grpo_vllm import reward_fn
-
 
 if __name__ == '__main__':
 
@@ -27,7 +25,7 @@ if __name__ == '__main__':
         time.sleep(10)
     
     print('find buffer.json, start load data...')
-    train_dataset = GRPODataset(buffer_file, train_file)
+    train_dataset = GRPODataset(buffer_file, train_file, sample_num = 8)
 
     model = AutoModelForCausalLM.from_pretrained(model_dir)
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
@@ -63,7 +61,7 @@ if __name__ == '__main__':
         modules_to_save=None  
     )
 
-    trainer = GRPOTrainer(model, [reward_fn], training_args, train_dataset, peft_config=peft_config)
+    trainer = GRPOTrainer(model, training_args, train_dataset, peft_config=peft_config)
     trainer.train()
 
     # # 全量

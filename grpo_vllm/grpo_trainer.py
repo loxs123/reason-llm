@@ -71,7 +71,6 @@ class GRPOTrainer(Trainer):
 
     trainer = GRPOTrainer(
         model="Qwen/Qwen2-0.5B-Instruct",
-        reward_funcs="weqweasdas/RM-Gemma-2B",
         train_dataset=dataset,
     )
 
@@ -88,22 +87,6 @@ class GRPOTrainer(Trainer):
               loaded using [`~transformers.AutoModelForCausalLM.from_pretrained`] with the keywork arguments
               in `args.model_init_kwargs`.
             - A [`~transformers.PreTrainedModel`] object. Only causal language models are supported.
-        reward_funcs (`Union[RewardFunc, list[RewardFunc]]`):
-            Reward functions to be used for computing the rewards. To compute the rewards, we call all the reward
-            functions with the prompts and completions and sum the rewards. Can be either:
-
-            - A single reward function, such as:
-                - A string: The *model ID* of a pretrained model hosted inside a model repo on huggingface.co, or a
-                path to a *directory* containing model weights saved using
-                [`~transformers.PreTrainedModel.save_pretrained`], e.g., `'./my_model_directory/'`. The model is loaded
-                using [`~transformers.AutoModelForSequenceClassification.from_pretrained`] with `num_labels=1` and the
-                keyword arguments in `args.model_init_kwargs`.
-                - A [`~transformers.PreTrainedModel`] object: Only sequence classification models are supported.
-                - A custom reward function: The function is provided with the prompts and the generated completions,
-                  plus any additional columns in the dataset. It should return a list of rewards. For more details, see
-                  [Using a custom reward function](#using-a-custom-reward-function).
-            - A list of reward functions, where each item can independently be any of the above types. Mixing different
-            types within the list (e.g., a string model ID and a custom reward function) is allowed.
         args ([`GRPOConfig`], *optional*, defaults to `None`):
             Configuration for this trainer. If `None`, a default configuration is used.
         train_dataset ([`~datasets.Dataset`] or [`~datasets.IterableDataset`]):
@@ -118,15 +101,6 @@ class GRPOTrainer(Trainer):
         processing_class ([`~transformers.PreTrainedTokenizerBase`], *optional*, defaults to `None`):
             Processing class used to process the data. The padding side must be set to "left". If `None`, the
             processing class is loaded from the model's name with [`~transformers.AutoTokenizer.from_pretrained`].
-        reward_processing_classes (`Union[PreTrainedTokenizerBase, list[PreTrainedTokenizerBase]]`, *optional*, defaults to `None`):
-            Processing classes corresponding to the reward functions specified in `reward_funcs`. Can be either:
-
-            - A single processing class: Used when `reward_funcs` contains only one reward function.
-            - A list of processing classes: Must match the order and length of the reward functions in `reward_funcs`.
-            If set to `None`, or if an element of the list corresponding to a [`~transformers.PreTrainedModel`] is
-            `None`, the tokenizer for the model is automatically loaded using [`~transformers.AutoTokenizer.from_pretrained`].
-            For elements in `reward_funcs` that are custom reward functions (not [`~transformers.PreTrainedModel`]),
-            the corresponding entries in `reward_processing_classes` are ignored.
         callbacks (list of [`~transformers.TrainerCallback`], *optional*, defaults to `None`):
             List of callbacks to customize the training loop. Will add those to the list of default callbacks
             detailed in [here](https://huggingface.co/docs/transformers/main_classes/callback).
@@ -145,7 +119,6 @@ class GRPOTrainer(Trainer):
     def __init__(
         self,
         model: Union[str, PreTrainedModel],
-        reward_funcs: Union[RewardFunc, list[RewardFunc]],
         args: GRPOConfig = None,
         train_dataset: Optional[Union[Dataset, IterableDataset]] = None,
         eval_dataset: Optional[Union[Dataset, IterableDataset, dict[str, Union[Dataset, IterableDataset]]]] = None,
@@ -160,7 +133,7 @@ class GRPOTrainer(Trainer):
             model_name = model if isinstance(model, str) else model.config._name_or_path
             model_name = model_name.split("/")[-1]
             args = GRPOConfig(f"{model_name}-GRPO")
-
+        
         # Models
         # Trained model
         model_init_kwargs = args.model_init_kwargs or {}
@@ -208,36 +181,7 @@ class GRPOTrainer(Trainer):
         if processing_class is None:
             processing_class = AutoTokenizer.from_pretrained(model.config._name_or_path, padding_side="left")
 
-        # Reward functions
-        if not isinstance(reward_funcs, list):
-            reward_funcs = [reward_funcs]
-        for i, reward_func in enumerate(reward_funcs):
-            if isinstance(reward_func, str):
-                reward_funcs[i] = AutoModelForSequenceClassification.from_pretrained(
-                    reward_func, num_labels=1, **model_init_kwargs
-                )
-        self.reward_funcs = reward_funcs
-
-        # Reward processing class
-        if reward_processing_classes is None:
-            reward_processing_classes = [None] * len(reward_funcs)
-        elif not isinstance(reward_processing_classes, list):
-            reward_processing_classes = [reward_processing_classes]
-        else:
-            if len(reward_processing_classes) != len(reward_funcs):
-                raise ValueError("The number of reward processing classes must match the number of reward functions.")
-
-        for i, (reward_processing_class, reward_func) in enumerate(zip(reward_processing_classes, reward_funcs)):
-            if isinstance(reward_func, PreTrainedModel):
-                if reward_processing_class is None:
-                    reward_processing_class = AutoTokenizer.from_pretrained(reward_func.config._name_or_path)
-                if reward_processing_class.pad_token_id is None:
-                    reward_processing_class.pad_token = reward_processing_class.eos_token
-                # The reward model computes the reward for the latest non-padded token in the input sequence.
-                # So it's important to set the pad token ID to the padding token ID of the processing class.
-                reward_func.config.pad_token_id = reward_processing_class.pad_token_id
-                reward_processing_classes[i] = reward_processing_class
-        self.reward_processing_classes = reward_processing_classes
+        self.peft_config = peft_config
 
         # Data collator
         def data_collator(features):  # No data collation is needed in GRPO
@@ -285,10 +229,6 @@ class GRPOTrainer(Trainer):
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
-        for i, reward_func in enumerate(self.reward_funcs):
-            if isinstance(reward_func, PreTrainedModel):
-                self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
-
     def _set_signature_columns_if_needed(self):
         # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
         # By default, this method sets `self._signature_columns` to the model's expected inputs.
@@ -308,8 +248,6 @@ class GRPOTrainer(Trainer):
                 ...   
             ]
         """
-        if not hasattr(self, 'start_train_time'):
-            self.start_train_time = time.time()
 
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
@@ -361,7 +299,7 @@ class GRPOTrainer(Trainer):
         advantages = torch.tensor(advantages, dtype=torch.float32, device=device) # batch_size
 
         # x - x.detach() allows for preserving gradients from x
-        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
+        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.detach().unsqueeze(1)
         per_token_loss = -(per_token_loss - self.beta * per_token_kl)
         
         loss = ((per_token_loss * prefix_mask).sum(dim=1) / prefix_mask.sum(dim=1)).mean()
@@ -372,21 +310,43 @@ class GRPOTrainer(Trainer):
         mean_kl = ((per_token_kl * prefix_mask).sum(dim=1) / prefix_mask.sum(dim=1)).mean()
         self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
-        output_dir = self._get_output_dir(None)
-        output_file = os.path.join(output_dir, 'config.json')
+        self.update_model()
+
+        return loss
+        
+    def get_last_time(self):
+        lora_path = os.path.join(self._get_output_dir(None), 'lora')
+        if self.peft_config is None:
+            check_path = os.path.join(self._get_output_dir(None), 'config.json')
+        else:
+            check_path = os.path.join(self._get_output_dir(None), 'lora/adapter_config.json')
+        if os.path.exists(check_path):
+            last_time = os.path.getmtime(check_path)
+        else:
+            last_time = 0.0
+        return last_time
+
+    def update_model(self):
+        if not hasattr(self, 'start_train_time'):
+            self.start_train_time = time.time()
+
         # first
         save_interval_time = self.args.int_time # s
         if time.time() - self.start_train_time > save_interval_time and not hasattr(self, 'start_save'):
             self.start_save = True
-            self.save_model(self._get_output_dir(None))
+            if self.peft_config is not None:
+                self.save_model(os.path.join(self._get_output_dir(None), 'lora'))
+            else:
+                self.save_model(self._get_output_dir(None))
             self.tokenizer.save_pretrained(self._get_output_dir(None))
         # next time
-        elif time.time() - os.path.getmtime(output_file) > save_interval_time and hasattr(self, 'start_save'):
-            self.save_model(self._get_output_dir(None))
+        elif time.time() - self.get_last_time() > save_interval_time and hasattr(self, 'start_save'):
+            if self.peft_config is not None:
+                self.save_model(os.path.join(self._get_output_dir(None), 'lora'))
+            else:
+                self.save_model(self._get_output_dir(None))
             self.tokenizer.save_pretrained(self._get_output_dir(None))
-
-        return loss
-
+    
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
         metrics = {key: sum(val) / len(val) for key, val in self._metrics.items()}  # average the metrics
         logs = {**logs, **metrics}

@@ -4,12 +4,13 @@ import time
 import os
 
 class GRPODataset(data.Dataset):
-    def __init__(self, filename, train_file, max_retries=10, retry_interval=0.5):
+    def __init__(self, filename, train_file, max_retries=10, retry_interval=0.5, sample_num = 8):
         super(GRPODataset, self).__init__()
 
         self.filename = filename
         self.max_retries = max_retries
         self.retry_interval = retry_interval
+        self.sample_num = sample_num
         
         with open(train_file) as f:
             self.len_data = len(f.read().split('\n'))
@@ -32,7 +33,7 @@ class GRPODataset(data.Dataset):
         raise RuntimeError(f"无法读取 {self.filename}，可能被持续写入")
 
     def __len__(self):
-        return self.len_data
+        return self.len_data * self.sample_num
 
     def __getitem__(self, index):
         data = self._wait_for_file()

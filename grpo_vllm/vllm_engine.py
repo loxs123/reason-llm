@@ -5,8 +5,11 @@ import copy
 import json
 import sys
 import numpy as np
+import torch
+from peft import PeftModel
+import gc
 
-from transformers import LogitsProcessor
+from transformers import LogitsProcessor,AutoModelForCausalLM
 from vllm import LLM, SamplingParams
 
 current_dir =  os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,6 +28,42 @@ MAX_NUM_SEQ = 32
 
 assert MAX_NUM_SEQ % SAMPLE_NUM == 0
 
+def apply_lora():
+    model_name_or_path = model_dir
+    output_path = model_dir
+    lora_path = os.path.join(model_dir, 'lora')
+    if not os.path.exists(lora_path): return
+    
+    print(f"Loading the base model from {model_name_or_path}")
+    # base_tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=False, trust_remote_code=True)
+    base = AutoModelForCausalLM.from_pretrained(model_name_or_path, torch_dtype=torch.bfloat16, trust_remote_code=True)
+    # base.generation_config = GenerationConfig.from_pretrained(model_name_or_path)
+
+    print(f"Loading the LoRA adapter from {lora_path}")
+ 
+    lora_model = PeftModel.from_pretrained(
+        base,
+        lora_path,
+        torch_dtype=torch.float16,
+    )
+ 
+    print("Applying the LoRA")
+    model = lora_model.merge_and_unload()
+ 
+    print(f"Saving the target model to {output_path}")
+    model.save_pretrained(output_path)
+
+
+def get_last_time():
+    lora_path = os.path.join(model_dir, 'lora')
+    if not os.path.exists(lora_path):
+        check_path = os.path.join(model_dir, 'config.json')
+    else:
+        check_path = os.path.join(model_dir, 'lora/adapter_config.json')
+    last_time = os.path.getmtime(check_path)
+    return last_time
+
+apply_lora()
 llm = LLM(
     model_dir,
     max_model_len=MAX_MODEL_LEN, # 4096*10,
@@ -105,7 +144,7 @@ while True:
         lines = csv.DictReader(f)
         
         for line in lines:
-            msgs = [ [{'role': 'user', 'content': line['question']}] for _ in range(SAMPLE_NUM) ]
+            msgs = [ [{'role': 'user', 'content': line['question'] + '\nIf the final answer is a number larger than 1000, take modulo 1000.\nPlease reason step by step, and put your final answer within \boxed{}.'}] for _ in range(SAMPLE_NUM) ]
             buffer_msgs += msgs
             buffer_labels.append(line['answer'])
 
@@ -137,14 +176,17 @@ while True:
                 cur_msgs.clear()
 
             # 检测vllm模型更新
-            if os.path.getmtime(os.path.join(model_dir, 'config.json')) > last_time:
+            if get_last_time() > last_time:
                 with open(buffer_file,'w') as f:
                     json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
     
                 cur_msgs.clear()
                 del llm
+                gc.collect()
+                torch.cuda.empty_cache()
     
-                last_time = os.path.getmtime(os.path.join(model_dir, 'config.json'))
+                last_time = get_last_time()
+                apply_lora()
                 llm = LLM(
                     model_dir,
                     max_model_len=MAX_MODEL_LEN, # 4096*10,
