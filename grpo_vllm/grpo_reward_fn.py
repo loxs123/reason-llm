@@ -31,7 +31,15 @@ def length_reward_fn(msgs):
 
 
 def correct_reward_fn(msgs, label):
-    correct = extract_boxed_text(msgs[-1]['content']) == int(label)
+
+    labelset = set()
+    if type(label) is str:
+        nums = re.findall(r'\d+', label)
+        for num in nums: labelset.add(num)
+    if type(label) is int:
+        labelset.add(label)
+
+    correct = extract_boxed_text(msgs[-1]['content']) in labelset
     if correct: return 1.0
     else: return 0.0
 
