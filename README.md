@@ -79,7 +79,7 @@ pip install -r requirements.txt
 2. 开启另外一个窗口训练模型
 
    ```python
-   CUDA_VISIBLE_DEVICES=1 accelerate launch --config_file grpo_vllm/fsdp_config.yaml grpo_vllm/main.py
+   CUDA_VISIBLE_DEVICES=1 accelerate launch --config_file grpo_vllm/deepspeed_zero3.yaml grpo_vllm/main.py
    ```
 
 
