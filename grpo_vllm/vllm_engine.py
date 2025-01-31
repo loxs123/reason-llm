@@ -173,7 +173,7 @@ while True:
 
                     label = buffer_labels[i // SAMPLE_NUM]
                     rewards = group_reward_fn(prompts=None, completions=processed_msgs[i:i+SAMPLE_NUM], label=label)
-
+                    print(rewards)
                     rewards = np.array(rewards)
 
                     if rewards.std() <= 0.1: # 没有差别的先不加入训练
