@@ -3,6 +3,7 @@
 from .grpo_trainer import GRPOTrainer
 from .grpo_config import GRPOConfig
 from .grpo_dataset import GRPODataset
-from .grpo_reward_fn import reward_fn
+from .grpo_reward_fn import batch_group_reward_fn, group_reward_fn
 
-__all__ = ['GRPOTrainer', 'GRPOConfig', 'GRPODataset', 'reward_fn']
+__all__ = ['GRPOTrainer', 'GRPOConfig', 'GRPODataset',
+            'batch_group_reward_fn','group_reward_fn']

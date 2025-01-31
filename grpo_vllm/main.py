@@ -9,8 +9,6 @@ sys.path.append(current_dir)
 
 from peft import LoraConfig
 
-from trl import get_peft_config
-
 from grpo_vllm import GRPOTrainer
 from grpo_vllm import GRPOConfig
 from grpo_vllm import GRPODataset

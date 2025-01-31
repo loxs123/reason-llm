@@ -3,12 +3,15 @@ import os
 import csv
 import copy
 import json
-
-from vllm import LLM, SamplingParams
+import sys
+import numpy as np
 
 from transformers import LogitsProcessor
+from vllm import LLM, SamplingParams
 
 current_dir =  os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(current_dir)
+from grpo_vllm import group_reward_fn
 
 last_time = time.time()
 model_dir = os.path.join(current_dir, 'model')
@@ -20,6 +23,8 @@ MAX_MODEL_LEN = 8192
 SAMPLE_NUM = 8
 MAX_NUM_SEQ = 32
 
+assert MAX_NUM_SEQ % SAMPLE_NUM == 0
+
 llm = LLM(
     model_dir,
     max_model_len=MAX_MODEL_LEN, # 4096*10,
@@ -28,6 +33,7 @@ llm = LLM(
     max_num_seqs = MAX_NUM_SEQ,
     gpu_memory_utilization=0.96, 
 )
+
 
 # 自定义 LogitsProcessor 类
 class ThinkCountLogitsProcessor(LogitsProcessor):
@@ -100,29 +106,37 @@ while True:
         
         for line in lines:
             msgs = [ [{'role': 'user', 'content': line['question']}] for _ in range(SAMPLE_NUM) ]
-            buffer_msgs.append(msgs)
+            buffer_msgs += msgs
             buffer_labels.append(line['answer'])
 
-            if len(buffer_msgs) * SAMPLE_NUM >= MAX_NUM_SEQ:
-
-                _msgs = []
-                for _m in buffer_msgs:
-                    _msgs += _m
+            if len(buffer_msgs) >= MAX_NUM_SEQ:
                 
-                processed_msgs = batch_message_generate(_msgs, llm)
+                processed_msgs = batch_message_generate(buffer_msgs, llm)
                 
                 for i in range(0, len(processed_msgs), SAMPLE_NUM):
-                    cur_msgs.append({'completion' : processed_msgs[i:i+SAMPLE_NUM], 'label': buffer_labels[i // SAMPLE_NUM]})
+
+                    label = buffer_labels[i // SAMPLE_NUM]
+                    rewards = group_reward_fn(prompts=None, completions=processed_msgs[i:i+SAMPLE_NUM], label=label)
+
+                    rewards = np.array(rewards)
+
+                    if rewards.std() <= 0.1: # 没有差别的先不加入训练
+                        continue
+
+                    advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4)
+
+                    for m, a in zip(processed_msgs[i:i+SAMPLE_NUM], advantages):
+                        cur_msgs.append({'completion' : m, 'advantage': a, 'label': label})
+                
                 buffer_msgs.clear()
                 buffer_labels.clear()
-            
-            # TODO: 可以从中挑选几个回答好的保存，保证奖励方差
     
             if not os.path.exists(buffer_file) and len(cur_msgs) >= 4:
                 with open(buffer_file,'w') as f:
                     json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
                 cur_msgs.clear()
-    
+
+            # 检测vllm模型更新
             if os.path.getmtime(os.path.join(model_dir, 'config.json')) > last_time:
                 with open(buffer_file,'w') as f:
                     json.dump(cur_msgs, f, ensure_ascii=False, indent=2)

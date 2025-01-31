@@ -304,7 +304,7 @@ class GRPOTrainer(Trainer):
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """inputs = [
-                {'completion': [[ {'role': 'user', 'content': 'question'}, {role': 'assistant', 'content': 'answer'}], ...  ], 'label': '12'},
+                {'completion': [ {'role': 'user', 'content': 'question'}, {role': 'assistant', 'content': 'answer'}], 'advantage': 0.8, 'label': '12'},
                 ...   
             ]
         """
@@ -314,9 +314,8 @@ class GRPOTrainer(Trainer):
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
         
-        prompts_text = [maybe_apply_chat_template({'messages': example }, self.processing_class)["text"][:2048] for examples in inputs for example in examples['completion']]
-        # [ batch11, batch12, batch13, batch21, ... ]
-        
+        prompts_text = [maybe_apply_chat_template({'messages': example['completion'] }, self.processing_class)["text"] for example in inputs]
+
         prompt_inputs = self.processing_class(
             prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
         )['input_ids']
@@ -345,6 +344,8 @@ class GRPOTrainer(Trainer):
         # # Get rid of the prompt (-1 because of the shift done in get_per_token_logps)
         # per_token_logps = per_token_logps[:, prompt_length - 1 :]
 
+        # [2 - last] logps
+
         with torch.inference_mode():
             if self.ref_model is not None:
                 ref_per_token_logps = get_per_token_logps(self.ref_model, prompt_completion_ids)
@@ -356,43 +357,8 @@ class GRPOTrainer(Trainer):
         # Compute the KL divergence between the model and the reference model
         per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
 
-        batch_size = len(inputs)
-        num_generations = len(inputs[0]['completion'])
-
-        rewards_per_func = torch.zeros(batch_size * num_generations, len(self.reward_funcs), device=device)
-        for i, (reward_func, reward_processing_class) in enumerate(
-            zip(self.reward_funcs, self.reward_processing_classes)
-        ):
-            if isinstance(reward_func, PreTrainedModel):
-                texts = [apply_chat_template({'messages': example }, reward_processing_class)["text"] for examples in inputs for example in examples['completion']]
-
-                reward_inputs = reward_processing_class(
-                    texts, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
-                )
-                reward_inputs = super()._prepare_inputs(reward_inputs)
-                with torch.inference_mode():
-                    rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
-            else:
-                # Repeat all input columns (but "prompt" and "completion") to match the number of generations
-                reward_kwargs = {key: [] for key in inputs[0].keys() if key not in ["prompt", "completion"]}
-                for key in reward_kwargs:
-                    for example in inputs:
-                        # Repeat each value in the column for `num_generations` times
-                        reward_kwargs[key].extend([example[key]] * num_generations)
-                output_reward_func = reward_func(prompts=None, completions=[e['completion'] for e in inputs], **reward_kwargs)
-                rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-
-        # Sum the rewards from all reward functions
-        rewards = rewards_per_func.sum(dim=1)
-
-        # Compute grouped-wise rewards
-        mean_grouped_rewards = rewards.view(-1, num_generations).mean(dim=1)
-        std_grouped_rewards = rewards.view(-1, num_generations).std(dim=1)
-
-        # Normalize the rewards to compute the advantages
-        mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(num_generations, dim=0)
-        std_grouped_rewards = std_grouped_rewards.repeat_interleave(num_generations, dim=0)
-        advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
+        advantages = [example['advantage'] for example in inputs]
+        advantages = torch.tensor(advantages, dtype=torch.float32, device=device) # batch_size
 
         # x - x.detach() allows for preserving gradients from x
         per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
@@ -402,18 +368,6 @@ class GRPOTrainer(Trainer):
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(prefix_mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)
-
-        reward_per_func = self.accelerator.gather_for_metrics(rewards_per_func).mean(0)
-        for i, reward_func in enumerate(self.reward_funcs):
-            if isinstance(reward_func, PreTrainedModel):
-                reward_func_name = reward_func.config._name_or_path.split("/")[-1]
-            else:
-                reward_func_name = reward_func.__name__
-            self._metrics[f"rewards/{reward_func_name}"].append(reward_per_func[i].item())
-
-        self._metrics["reward"].append(self.accelerator.gather_for_metrics(rewards).mean().item())
-
-        self._metrics["reward_std"].append(self.accelerator.gather_for_metrics(std_grouped_rewards).mean().item())
 
         mean_kl = ((per_token_kl * prefix_mask).sum(dim=1) / prefix_mask.sum(dim=1)).mean()
         self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
