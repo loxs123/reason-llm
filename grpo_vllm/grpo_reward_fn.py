@@ -35,7 +35,7 @@ def correct_reward_fn(msgs, label):
     labelset = set()
     if type(label) is str:
         nums = re.findall(r'\d+', label)
-        for num in nums: labelset.add(num)
+        for num in nums: labelset.add(int(num))
     if type(label) is int:
         labelset.add(label)
 
