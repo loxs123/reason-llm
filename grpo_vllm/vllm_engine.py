@@ -9,7 +9,7 @@ import torch
 from peft import PeftModel
 import gc
 
-from transformers import LogitsProcessor,AutoModelForCausalLM
+from transformers import LogitsProcessor,AutoModelForCausalLM, AutoTokenizer
 from vllm import LLM, SamplingParams
 
 current_dir =  os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -21,21 +21,22 @@ model_dir = os.path.join(current_dir, 'model')
 buffer_file = os.path.join(current_dir, 'data', 'buffer.json')
 data_file = os.path.join(current_dir, 'data', 'train.csv')
 
-GPU_NUM = 1
+
 MAX_MODEL_LEN = 8192
 SAMPLE_NUM = 8
 MAX_NUM_SEQ = 32
+GPU_NUM = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
 
 assert MAX_NUM_SEQ % SAMPLE_NUM == 0
 
 def apply_lora():
     model_name_or_path = model_dir
-    output_path = model_dir
+    output_path = os.path.join(model_dir, 'merge')
     lora_path = os.path.join(model_dir, 'lora')
-    if not os.path.exists(lora_path): return
+    if not os.path.exists(lora_path): return False
     
     print(f"Loading the base model from {model_name_or_path}")
-    # base_tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=False, trust_remote_code=True)
+    base_tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=False, trust_remote_code=True)
     base = AutoModelForCausalLM.from_pretrained(model_name_or_path, torch_dtype=torch.bfloat16, trust_remote_code=True)
     # base.generation_config = GenerationConfig.from_pretrained(model_name_or_path)
 
@@ -49,10 +50,12 @@ def apply_lora():
  
     print("Applying the LoRA")
     model = lora_model.merge_and_unload()
- 
+
     print(f"Saving the target model to {output_path}")
     model.save_pretrained(output_path)
+    base_tokenizer.save_pretrained(output_path)
 
+    return True
 
 def get_last_time():
     lora_path = os.path.join(model_dir, 'lora')
@@ -63,15 +66,28 @@ def get_last_time():
     last_time = os.path.getmtime(check_path)
     return last_time
 
-apply_lora()
-llm = LLM(
-    model_dir,
-    max_model_len=MAX_MODEL_LEN, # 4096*10,
-    trust_remote_code=True,
-    tensor_parallel_size=GPU_NUM,
-    max_num_seqs = MAX_NUM_SEQ,
-    gpu_memory_utilization=0.96, 
-)
+def load_llm():
+    lora = apply_lora()
+    
+    if lora:
+        llm = LLM(
+            os.path.join(model_dir, 'merge'),
+            max_model_len=MAX_MODEL_LEN, # 4096*10,
+            trust_remote_code=True,
+            tensor_parallel_size=GPU_NUM,
+            max_num_seqs = MAX_NUM_SEQ,
+            gpu_memory_utilization=0.96, 
+        )
+    else:
+        llm = LLM(
+            model_dir,
+            max_model_len=MAX_MODEL_LEN, # 4096*10,
+            trust_remote_code=True,
+            tensor_parallel_size=GPU_NUM,
+            max_num_seqs = MAX_NUM_SEQ,
+            gpu_memory_utilization=0.96, 
+        )
+    return llm
 
 
 # 自定义 LogitsProcessor 类
@@ -100,7 +116,7 @@ class ThinkCountLogitsProcessor(LogitsProcessor):
 
         return scores
 
-
+llm = load_llm()
 tokenizer = copy.deepcopy(llm.get_tokenizer())
 keyword = '<think>'
 # 初始化自定义 LogitsProcessor
@@ -186,13 +202,4 @@ while True:
                 torch.cuda.empty_cache()
     
                 last_time = get_last_time()
-                apply_lora()
-                llm = LLM(
-                    model_dir,
-                    max_model_len=MAX_MODEL_LEN, # 4096*10,
-                    trust_remote_code=True,
-                    tensor_parallel_size=GPU_NUM,
-                    max_num_seqs = MAX_NUM_SEQ,
-                    gpu_memory_utilization=0.96, 
-                )
-
+                llm = load_llm()
