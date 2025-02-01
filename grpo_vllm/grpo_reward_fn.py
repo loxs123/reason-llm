@@ -35,10 +35,10 @@ def correct_reward_fn(msgs, label):
     labelset = set()
     if type(label) is str:
         nums = re.findall(r'\d+', label)
-        for num in nums: labelset.add(num)
+        for num in nums: labelset.add(int(num))
     if type(label) is int:
         labelset.add(label)
-
+    
     correct = extract_boxed_text(msgs[-1]['content']) in labelset
     if correct: return 1.0
     else: return 0.0
@@ -64,5 +64,3 @@ def group_reward_fn(prompts=None, completions=None, label=None):
     for c in completions:
         rewards.append(_reward_fn(c, label))
     return rewards
-
-

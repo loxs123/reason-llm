@@ -48,6 +48,7 @@ if __name__ == '__main__':
         save_only_model=True,
         weight_decay=0.01, # L2正则化
         bf16=True,  # 启用 bf16
+        # gradient_checkpointing=True,  # 启用梯度检查点 降低显存
     )
 
     # 使用peft

@@ -24,7 +24,7 @@ data_file = os.path.join(current_dir, 'data', 'train.csv')
 MAX_MODEL_LEN = 8192
 SAMPLE_NUM = 8
 MAX_NUM_SEQ = 32
-GPU_NUM = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
+GPU_NUM = len(os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(','))
 
 START_MSG_NUM = 320
 
@@ -173,15 +173,16 @@ while True:
 
                     label = buffer_labels[i // SAMPLE_NUM]
                     
-
                     rewards = group_reward_fn(prompts=None, completions=processed_msgs[i:i+SAMPLE_NUM], label=label)
-                    print(label, rewards)
+                    
                     rewards = np.array(rewards)
 
-                    if rewards.std() <= 0.1: # 没有差别的先不加入训练
-                        continue
+                    # if rewards.std() <= 0.1: # 没有差别的先不加入训练
+                    #     continue
 
                     advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4)
+
+                    print(label, rewards, rewards.std())
 
                     for m, a in zip(processed_msgs[i:i+SAMPLE_NUM], advantages):
                         cur_msgs.append({'completion' : m, 'advantage': a, 'label': label})
@@ -189,10 +190,10 @@ while True:
                 buffer_msgs.clear()
                 buffer_labels.clear()
     
-            if not os.path.exists(buffer_file) and len(cur_msgs) >= START_MSG_NUM:
-                with open(buffer_file,'w') as f:
-                    json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
-                cur_msgs.clear()
+            # if not os.path.exists(buffer_file) and len(cur_msgs) >= START_MSG_NUM:
+            #     with open(buffer_file,'w') as f:
+            #         json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
+            #     cur_msgs.clear()
 
             # 检测vllm模型更新
             if get_last_time() > last_time:
@@ -206,3 +207,8 @@ while True:
     
                 last_time = get_last_time()
                 llm = load_llm()
+        
+    with open(buffer_file,'w') as f:
+        json.dump(cur_msgs, f, ensure_ascii=False, indent=2)
+    break
+
