@@ -28,7 +28,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 |----------------------------|------------------------|----------------------------|
 | High VRAM Requirements     | Multi-GPU clusters(other framework)     | Single 80GB GPU support    |
 | Slow Sampling Speed        | Transformers processing   | VLLM GPU acceleration      |
-| Min Batch Size Per Device  | group size   | 1   |
+| High Min Batch Size Per Device  | group size   | 1   |
 | Memory Inefficiency        | Dual-model loading(other framework)     | Single-model architecture  |
 
 ## 🛠️ Getting Started
