@@ -8,7 +8,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 ## 🌟 Key Features
 
 **⚡ Ultra-Efficient Resource Usage**
-- More lower VRAM consumption than conventional methods
+- More lower GPU memory consumption than other methods
 - Serialized sampling & training pipeline for optimal GPU utilization
 - Supports training with context lengths up to 8K tokens
 
@@ -26,10 +26,10 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 
 | Challenge                  | Conventional Solutions | Our Approach               |
 |----------------------------|------------------------|----------------------------|
-| High VRAM Requirements     | Multi-GPU clusters     | Single 80GB GPU support    |
+| High VRAM Requirements     | Multi-GPU clusters(other framework)     | Single 80GB GPU support    |
 | Slow Sampling Speed        | Transformers processing   | VLLM GPU acceleration      |
-| Batch Size Limitations     | Fixed batch grouping   | Dynamic batch processing   |
-| Memory Inefficiency        | Dual-model loading     | Single-model architecture  |
+| Min Batch Size Per Device  | group size   | 1   |
+| Memory Inefficiency        | Dual-model loading(other framework)     | Single-model architecture  |
 
 ## 🛠️ Getting Started
 
