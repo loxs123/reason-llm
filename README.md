@@ -74,7 +74,7 @@ pip install -e .
 #### 运行命令
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file grpo_vllm/deepspeed_zero3.yaml scripts/train.py
+python scripts/train.py
 ```
 
 ### 计划验证方案
