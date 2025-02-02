@@ -47,7 +47,7 @@ class TrainingSamplingCoordinator:
 
     def _load_model(self):
         """加载或重新加载模型"""
-        if self.llm is not None:
+        if hasattr(self, 'llm') and self.llm is not None:
             del self.llm
             gc.collect()
             torch.cuda.empty_cache()
@@ -58,7 +58,7 @@ class TrainingSamplingCoordinator:
     def _create_llm_instance(self):
         """创建LLM实例"""
 
-        apply_lora()
+        apply_lora(model_dir)
         model_path = os.path.join(model_dir, "merge")
 
         if not os.path.exists(model_path):
@@ -88,6 +88,8 @@ class TrainingSamplingCoordinator:
                 label=buffer_labels[j // SAMPLE_NUM],
             )
             rewards = np.array(rewards)
+            if rewards.std() < 0.05:
+                continue
             advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4)
 
             # 保存到当前批次
@@ -113,9 +115,11 @@ class TrainingSamplingCoordinator:
                 data.append(row)
     
         # for i, row in enumerate(data):
-        for i in range(INT_NUM):
+        i = 0
+        while len(cur_msgs) < INT_NUM:
 
             row = data[(self.cur_data_idx + i) % len(data)]
+            
             # 构造基础提示
             
             sys_set = ("You are a the most powerful math expert. "
@@ -134,15 +138,17 @@ class TrainingSamplingCoordinator:
             buffer_msgs.append(batch_prompts)
             buffer_labels.append(row['answer'])
 
-            self.cur_data_idx += 1
+            
+            # self.cur_data_idx += 1
             if (i + 1) % (MAX_NUM_SEQ // SAMPLE_NUM) == 0:
                 cur_msgs += self._to_buffer(buffer_msgs, buffer_labels)
                 buffer_msgs.clear()
                 buffer_labels.clear()
 
-            if len(cur_msgs) >= INT_NUM:
-                self._write_buffer(cur_msgs)
-                break
+            i += 1
+                
+        self.cur_data_idx += i
+        self._write_buffer(cur_msgs)
 
     def _generate_batch(self, prompts):
         """执行批量生成"""
@@ -183,87 +189,19 @@ class TrainingSamplingCoordinator:
     def train_model(self):
         """执行模型训练"""
         print("\n--- 开始训练阶段 ---")
-        
-        # 等待数据就绪
-        while not os.path.exists(buffer_file):
-            print("等待采样数据...")
-            time.sleep(10)
 
-        # 加载数据集
-        train_dataset = GRPODataset(buffer_file, data_file, SAMPLE_NUM)
-        
-        # 初始化模型
-        if os.path.exists(model_dir, 'lora'):
-            model = AutoModelForCausalLM.from_pretrained(model_dir)
-            print(f"Loading the LoRA adapter from {os.path.exists(model_dir, 'lora')}")
-            lora_model = PeftModel.from_pretrained(
-                model,
-                os.path.exists(model_dir, 'lora'),
-                torch_dtype=torch.float16,
-            )
-            model = lora_model.merge_and_unload()
-        elif os.path.exists(os.path.join(model_dir, 'merge')):
-            print(f"Loading model from {os.path.exists(model_dir, 'merge')}")
-            model = AutoModelForCausalLM.from_pretrained(os.path.join(model_dir, 'merge'))
-        else:
-            print(f"Loading model from {model_dir}")
-            model = AutoModelForCausalLM.from_pretrained(model_dir)
-
-        model.gradient_checkpointing_enable()
-
-        # 配置LoRA
-        peft_config = LoraConfig(
-            task_type="CAUSAL_LM",
-            r=32,
-            target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-            lora_alpha=64,
-            lora_dropout=0.1,
-            bias="none",
-        )
-
-        # 配置训练参数
-        training_args = GRPOConfig(
-            output_dir=os.path.join(model_dir, 'lora'), # lora
-            # output_dir=os.path.join(model_dir, 'merge'), # full
-            num_train_epochs=1,
-            per_device_train_batch_size=1,
-            gradient_accumulation_steps=4,
-            save_strategy="epoch",
-            logging_dir=os.path.join(log_dir, f"experiment_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"),
-            report_to="tensorboard",
-            overwrite_output_dir=True,
-            save_only_model=True,
-            weight_decay=0.01,
-            bf16=True,
-            logging_steps=5,
-            log_level="info",
-        )
-
-        # 执行训练
-        trainer = GRPOTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_dataset,
-            peft_config=peft_config,
-        )
-        trainer.train()
-        
-        # 清理训练资源
-        del model, trainer
+        del self.llm
         gc.collect()
         torch.cuda.empty_cache()
+        os.system(f'CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file "{current_dir}/grpo_vllm/deepspeed_zero3.yaml" "{current_dir}/grpo_vllm/grpo_trainer.py"')
 
     def run_cycle(self):
         """执行完整的训练-采样周期"""
-        try:
-            # 1. 采样阶段
-            self.generate_samples()
-            # 2. 训练阶段
-            self.train_model()
-            # 3. 更新模型
-            self._load_model()
-        except Exception as e:
-            print(f"运行时错误: {str(e)}")
-            self._load_model()  # 出错时重新加载模型
 
-    
+        # 1. 采样阶段
+        self.generate_samples()
+        # 2. 训练阶段
+        self.train_model()
+        # 3. 更新模型
+        self._load_model()
+            

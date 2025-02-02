@@ -103,3 +103,4 @@ BaseModel：https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
 
 PPO+vllm：https://github.com/OpenRLHF/OpenRLHF/blob/main/openrlhf/cli/train_ppo_ray.py
 
+https://github.com/casper-hansen/AutoAWQ

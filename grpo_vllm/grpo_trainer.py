@@ -13,9 +13,11 @@
 # limitations under the License.
 
 import os
+import sys
 import random
 import time
 import textwrap
+import datetime
 from collections import defaultdict
 from typing import Any, Callable, Optional, Union
 
@@ -41,9 +43,27 @@ from trl.models import create_reference_model, prepare_deepspeed, unwrap_model_f
 from trl.trainer.utils import generate_model_card, get_comet_experiment_url
 from trl.data_utils import apply_chat_template, is_conversational, maybe_apply_chat_template
 
-from .utils import prepare_deepspeed,create_prefix_mask
-from .grpo_config import GRPOConfig
+from peft import LoraConfig, PeftModel
 
+from grpo_vllm.utils import prepare_deepspeed,create_prefix_mask,apply_lora, ThinkCountLogitsProcessor
+from grpo_vllm.grpo_config import GRPOConfig
+from grpo_vllm.grpo_dataset import GRPODataset
+
+current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(current_dir)
+
+model_dir = os.path.join(current_dir, "model")
+log_dir = os.path.join(current_dir, "log")
+buffer_file = os.path.join(current_dir, "data", "buffer.json")
+data_file = os.path.join(current_dir, "data", "train.csv")
+MAX_MODEL_LEN = 8192
+SAMPLE_NUM = 8
+MAX_NUM_SEQ = 32
+INT_NUM = 32
+
+GPU_NUM = len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
+
+assert MAX_NUM_SEQ % SAMPLE_NUM == 0
 
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
@@ -412,3 +432,67 @@ class GRPOTrainer(Trainer):
         )
 
         model_card.save(os.path.join(self.args.output_dir, "README.md"))
+
+if __name__ == '__main__':
+
+    # 加载数据集
+    train_dataset = GRPODataset(buffer_file, data_file, SAMPLE_NUM)
+    
+    # 初始化模型
+    if os.path.exists(os.path.join(model_dir, 'lora')):
+        model = AutoModelForCausalLM.from_pretrained(model_dir)
+        print(f"Loading the LoRA adapter from {os.path.join(model_dir, 'lora')}")
+        lora_model = PeftModel.from_pretrained(
+            model,
+            os.path.join(model_dir, 'lora'),
+            torch_dtype=torch.float16,
+        )
+        model = lora_model.merge_and_unload()
+    elif os.path.exists(os.path.join(model_dir, 'merge')):
+        print(f"Loading model from {os.path.exists(model_dir, 'merge')}")
+        model = AutoModelForCausalLM.from_pretrained(os.path.join(model_dir, 'merge'))
+    else:
+        print(f"Loading model from {model_dir}")
+        model = AutoModelForCausalLM.from_pretrained(model_dir)
+
+    model.gradient_checkpointing_enable()
+
+    # 配置LoRA
+    peft_config = LoraConfig(
+        task_type="CAUSAL_LM",
+        r=32,
+        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+        lora_alpha=64,
+        lora_dropout=0.1,
+        bias="none",
+    )
+
+    # 配置训练参数
+    training_args = GRPOConfig(
+        output_dir=os.path.join(model_dir, 'lora'), # lora
+        # output_dir=os.path.join(model_dir, 'merge'), # full
+        num_train_epochs=1,
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=4,
+        save_strategy="no",
+        logging_dir=os.path.join(log_dir, f"experiment_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"),
+        report_to="tensorboard",
+        overwrite_output_dir=True,
+        save_only_model=True,
+        weight_decay=0.01,
+        bf16=True,
+        logging_steps=5,
+        log_level="info",
+    )
+
+    # 执行训练
+    trainer = GRPOTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        peft_config=peft_config,
+    )
+    trainer.train()
+    trainer.save_model(os.path.join(model_dir, 'lora'))
+    trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
+    
