@@ -31,6 +31,7 @@ if __name__ == '__main__':
     model = AutoModelForCausalLM.from_pretrained(model_dir)
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
+    model.gradient_checkpointing_enable()
     # 获取精确到毫秒的当前时间
     formatted_now = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
     experiment_name = f"experiment_{formatted_now}"
@@ -41,14 +42,15 @@ if __name__ == '__main__':
         num_train_epochs=2, # 
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
-        save_strategy="no",
+        save_strategy="epoch",
         logging_dir=f"{log_dir}/{experiment_name}",
         report_to="tensorboard",               # 启用 TensorBoard
         overwrite_output_dir=True, 
         save_only_model=True,
         weight_decay=0.01, # L2正则化
         bf16=True,  # 启用 bf16
-        # gradient_checkpointing=True,  # 启用梯度检查点 降低显存
+        logging_steps=5,
+        log_level='info',
     )
 
     # 使用peft

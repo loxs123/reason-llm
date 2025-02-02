@@ -90,7 +90,3 @@ class GRPOConfig(TrainingArguments):
         metadata={"help": "Training and sampling interval time"},
     )
     
-    max_seq_length : float = field(
-        default=7500,
-        metadata={"help": "max_seq_length"},
-    )

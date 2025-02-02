@@ -22,7 +22,7 @@ def length_reward_fn(msgs):
 
     # clip 0 - 1
     
-    base = len(msgs[-1]['content']) - 4000 / 4192
+    base = len(msgs[-1]['content']) - 5000 / 25000
 
     if base < 0: base = 0.0
     if base > 1: base = 1.0
@@ -47,8 +47,8 @@ def correct_reward_fn(msgs, label):
 def _reward_fn(msgs, label):
     r1 = correct_reward_fn(msgs, label)
     r2 = length_reward_fn(msgs)
-    # if r1 > 0.5: return r1 + r2 * 0.2
-    if r1 > 0.5: return r1
+    if r1 > 0.5: return r1 + r2 * 0.2
+    # if r1 > 0.5: return r1
     else: return r1
 
 def batch_group_reward_fn(prompts=None, completions=None, label=None):
