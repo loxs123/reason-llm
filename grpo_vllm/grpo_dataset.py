@@ -1,6 +1,7 @@
 import torch.utils.data as data
 import json
 import time
+import random
 import os
 
 class GRPODataset(data.Dataset):
@@ -11,9 +12,15 @@ class GRPODataset(data.Dataset):
         self.max_retries = max_retries
         self.retry_interval = retry_interval
         self.sample_num = sample_num
+
+        data = self._wait_for_file()
+        self.len_data = len(data)
+
+        self.index = [i for i in range(self.len_data)]
+        random.shuffle(self.index)
         
-        with open(train_file) as f:
-            self.len_data = len(f.read().split('\n'))
+        # with open(train_file) as f:
+        #     self.len_data = len(f.read().split('\n'))
     
     def last_change_mtime(self):
         mod_time = os.path.getmtime(self.filename)
@@ -33,8 +40,8 @@ class GRPODataset(data.Dataset):
         raise RuntimeError(f"无法读取 {self.filename}，可能被持续写入")
 
     def __len__(self):
-        return self.len_data * self.sample_num
+        return self.len_data
 
     def __getitem__(self, index):
         data = self._wait_for_file()
-        return data[index % len(data)]
+        return data[self.index[index] % len(data)]
