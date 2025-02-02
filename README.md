@@ -90,9 +90,6 @@ python scripts/train.py
 3. **Dynamic Batching** - Flexible sequence processing
 4. **Memory Optimization** - Gradient checkpointing + DeepSpeed Zero-3
 
-### Benchmark Comparison
-![VRAM Usage Comparison](https://via.placeholder.com/800x400.png?text=VRAM+Usage+Comparison+Chart)
-*Actual performance metrics coming soon*
 
 ## 📚 References
 1. [VLLM Official Implementation](https://github.com/vllm-project/vllm)
