@@ -5,7 +5,7 @@ import json
 url = "https://api.siliconflow.cn/v1/chat/completions"  # 请确认这个URL是否正确
 headers = {
     "Content-Type": "application/json",
-    "Authorization": "Bearer sk-zdiswkwbvrxgmzvfmmurmdtmbcvnzxxpyhrqkkqpdbapryhu"  # 请替换成你的API密钥
+    "Authorization": "Bearer sk-zdiswkwbvrxgmzvfmmurmdtmbcvnzxxpyhrqkkqpdbapryhv"  # 请替换成你的API密钥
 }
 
 

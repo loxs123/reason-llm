@@ -2,25 +2,25 @@
 
 ### 动机
 
-1. 当前VLLM+GRPO算法的开源代码比较匮乏。
+当前使用GRPO算法微调大语言模型一般需要比较大的显存，显存较低的使用场景将会受限。
 
-2. 当前支持 VLLM+GRPO算法 的开源训练库，例如trl [commit](https://github.com/huggingface/trl/commit/ed14ed90438860fc59b8b7694d4e103a2a146a57#diff-3dccaf6ed3f406ca989a3fe919c767e614cfc90ba81a8a761567ff5ca2cb97dd)，同一问题的不同回答只能放在同一批次中，如果需要设置句长比较大的时候（微调 r1 模型），容易出现OOM。
+GRPO算法采样过程是比较慢的，需要使用VLLM加速，但是现在支持GRPO算法+VLLM加速的开源算法库比较少。
 
-本仓库将针对这两个问题进行改进，旨在做到两点：
+当前支持 VLLM+GRPO算法 的开源算法库，例如[trl](https://github.com/huggingface/trl)，同一问题的不同回答只能放在同一批次中，如果需要设置句长比较大的时候（微调 r1 模型），容易出现OOM。
 
-1. 支持VLLM加速采样，并且实现并行训练和采样。
+当前支持强化学习微调大语言模型的框架，大多采用异步，需要同时加载推理模型和训练模型，对显存消耗比较大。
 
-2. 同一问题的不同回答可以出现在不同批次中，以支持微调更大的句长。
+本仓库将针对这几个问题进行改进，旨在做到三点：
+
+为充分利用GPU资源，采用串行采样和训练。
+
+支持VLLM加速采样。
+
+支持同一问题的多个回答可以在不同批次训练，以微调更大的句长。
 
 ### 使用场景
 
-单机多卡
-
-### 改进思路
-
-使用VLLM加速推理，从而节省训练时间。
-
-使用一张卡用vllm，另外多张卡同步训练。
+在一张80G的显卡上运行GRPO算法。
 
 ### 运行步骤
 
@@ -60,28 +60,22 @@ train.csv 格式
 | Let $f(x)=\|x-p\|+\|x-15\|+\|x-p-15\|$ , where $0 < p < 15$ . Determine the minimum value taken by $f(x)$ for $x$ in the interval $p \leq x\leq15$ . | 15     |
 | What is the product of the real roots of the equation $x^2 + 18x + 30 = 2 \sqrt{x^2 + 18x + 45}$ ? | 20     |
 
-model 目录：最开始的时候放BaseModel（记得在其余地方备份），在训练过程中会动态更新模型。
+model 目录：最开始的时候放BaseModel，在训练过程中会动态更新模型。
 
 data目录：要求目录可写，会在这个目录生成buffer.json
 
 #### 环境准备
 
-pip install -r requirements.txt
+```bash
+git clone https://github.com/loxs123/grpo-vllm.git
+pip install -e .
+```
 
 #### 运行命令
 
-1. 运行vllm收集回复
-
-   ```python
-   CUDA_VISIBLE_DEVICES=0 python grpo_vllm/vllm_engine.py
-   ```
-
-2. 开启另外一个窗口训练模型
-
-   ```python
-   CUDA_VISIBLE_DEVICES=1 accelerate launch --config_file grpo_vllm/deepspeed_zero3.yaml grpo_vllm/main.py
-   ```
-
+```bash
+CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file grpo_vllm/deepspeed_zero3.yaml scripts/train.py
+```
 
 ### 计划验证方案
 

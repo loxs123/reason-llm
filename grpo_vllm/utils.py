@@ -1,6 +1,10 @@
 from copy import deepcopy
 import torch
 from accelerate.utils import is_deepspeed_available
+import os
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
+from transformers import LogitsProcessor
 
 if is_deepspeed_available():
     import deepspeed
@@ -49,3 +53,58 @@ def create_prefix_mask(input_ids, assistant_id):
             mask[i, assistant_idx[-1]:] = 1.0  # 从最后一个 assistant_id 位置开始置 1
     
     return mask
+
+
+def apply_lora(model_dir):
+    model_name_or_path = model_dir
+    output_path = os.path.join(model_dir, 'merge')
+    lora_path = os.path.join(model_dir, 'lora')
+    if not os.path.exists(lora_path): return False
+    
+    print(f"Loading the base model from {model_name_or_path}")
+    base_tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=False, trust_remote_code=True)
+    base = AutoModelForCausalLM.from_pretrained(model_name_or_path, torch_dtype=torch.bfloat16, trust_remote_code=True)
+    # base.generation_config = GenerationConfig.from_pretrained(model_name_or_path)
+
+    print(f"Loading the LoRA adapter from {lora_path}")
+ 
+    lora_model = PeftModel.from_pretrained(
+        base,
+        lora_path,
+        torch_dtype=torch.float16,
+    )
+ 
+    print("Applying the LoRA")
+    model = lora_model.merge_and_unload()
+
+    print(f"Saving the target model to {output_path}")
+    model.save_pretrained(output_path)
+    base_tokenizer.save_pretrained(output_path)
+
+    return True
+
+# 自定义 LogitsProcessor 类
+class ThinkCountLogitsProcessor(LogitsProcessor):
+    def __init__(self, keyword, tokenizer):
+
+        self.kids = tokenizer.encode(keyword, add_special_tokens=False)
+        self.ks = len(self.kids)
+        self.eos_id = tokenizer.eos_token_id
+        
+        self.max_occurrences = 5 # 最大出现5次
+        self.keyword_count = 0  # 记录关键词出现次数
+    
+    def __call__(self, input_ids, scores):
+
+        _input_ids = list(input_ids)
+        cnt = 0
+        for j in range(len(_input_ids) - len(self.kids)):
+            if _input_ids[j:j + self.ks] == self.kids:
+                cnt += 1
+                if cnt >= self.max_occurrences:
+                    break
+
+        if cnt == self.max_occurrences:
+            scores[self.eos_id] += 1e5
+
+        return scores

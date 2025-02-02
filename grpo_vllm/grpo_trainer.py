@@ -315,7 +315,6 @@ class GRPOTrainer(Trainer):
         return loss
         
     def get_last_time(self):
-        lora_path = os.path.join(self._get_output_dir(None), 'lora')
         if self.peft_config is None:
             check_path = os.path.join(self._get_output_dir(None), 'config.json')
         else:
