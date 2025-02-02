@@ -8,7 +8,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 ## 🌟 Key Features
 
 **⚡ Ultra-Efficient Resource Usage**
-- More lower GPU memory consumption than other methods
+- Lower GPU memory consumption than other methods
 - Serialized sampling & training pipeline for optimal GPU utilization
 - Supports training with context lengths up to 8K tokens
 
