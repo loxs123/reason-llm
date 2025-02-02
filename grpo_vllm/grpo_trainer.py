@@ -248,6 +248,13 @@ class GRPOTrainer(Trainer):
                 self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
+        # # Bnb Quantized models doesn't support `.to` operation.
+        # if (
+        #     self.ref_model
+        #     and self.place_model_on_device
+        #     and not getattr(self.ref_model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
+        # ):
+        #     self._move_model_to_device(self.ref_model, args.device)
 
     def _set_signature_columns_if_needed(self):
         # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
@@ -276,7 +283,7 @@ class GRPOTrainer(Trainer):
 
         prompt_inputs = self.processing_class(
             prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
-        )['input_ids']
+        )['input_ids'][:,:512]
         # only for single turn
         assistant_id = self.processing_class('<｜Assistant｜>', add_special_tokens=False)['input_ids'][0]
         prefix_mask = create_prefix_mask(prompt_inputs, assistant_id)
@@ -330,41 +337,7 @@ class GRPOTrainer(Trainer):
         mean_kl = ((per_token_kl * prefix_mask).sum(dim=1) / prefix_mask.sum(dim=1)).mean()
         self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
-        # self.update_model()
-
         return loss
-        
-    def get_last_time(self):
-        if self.peft_config is None:
-            check_path = os.path.join(self._get_output_dir(None), 'config.json')
-        else:
-            check_path = os.path.join(self._get_output_dir(None), 'lora/adapter_config.json')
-        if os.path.exists(check_path):
-            last_time = os.path.getmtime(check_path)
-        else:
-            last_time = 0.0
-        return last_time
-
-    def update_model(self):
-        if not hasattr(self, 'start_train_time'):
-            self.start_train_time = time.time()
-
-        # first
-        save_interval_time = self.args.int_time # s
-        if time.time() - self.start_train_time > save_interval_time and not hasattr(self, 'start_save'):
-            self.start_save = True
-            if self.peft_config is not None:
-                self.save_model(os.path.join(self._get_output_dir(None), 'lora'))
-            else:
-                self.save_model(self._get_output_dir(None))
-            self.tokenizer.save_pretrained(self._get_output_dir(None))
-        # next time
-        elif time.time() - self.get_last_time() > save_interval_time and hasattr(self, 'start_save'):
-            if self.peft_config is not None:
-                self.save_model(os.path.join(self._get_output_dir(None), 'lora'))
-            else:
-                self.save_model(self._get_output_dir(None))
-            self.tokenizer.save_pretrained(self._get_output_dir(None))
     
     def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
         metrics = {key: sum(val) / len(val) for key, val in self._metrics.items()}  # average the metrics
@@ -433,6 +406,8 @@ class GRPOTrainer(Trainer):
 
         model_card.save(os.path.join(self.args.output_dir, "README.md"))
 
+
+
 if __name__ == '__main__':
 
     # 加载数据集
@@ -457,20 +432,11 @@ if __name__ == '__main__':
 
     model.gradient_checkpointing_enable()
 
-    # 配置LoRA
-    peft_config = LoraConfig(
-        task_type="CAUSAL_LM",
-        r=32,
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-        lora_alpha=64,
-        lora_dropout=0.1,
-        bias="none",
-    )
 
     # 配置训练参数
     training_args = GRPOConfig(
-        output_dir=os.path.join(model_dir, 'lora'), # lora
-        # output_dir=os.path.join(model_dir, 'merge'), # full
+        # output_dir=os.path.join(model_dir, 'lora'), # lora
+        output_dir=os.path.join(model_dir, 'tmp'), # full
         num_train_epochs=1,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
@@ -485,14 +451,40 @@ if __name__ == '__main__':
         log_level="info",
     )
 
-    # 执行训练
+    # ############## LORA ###################
+    # # 配置LoRA
+    # peft_config = LoraConfig(
+    #     task_type="CAUSAL_LM",
+    #     r=32,
+    #     target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+    #     lora_alpha=64,
+    #     lora_dropout=0.1,
+    #     bias="none",
+    # )
+
+    # # 执行训练
+    # trainer = GRPOTrainer(
+    #     model=model,
+    #     args=training_args,
+    #     train_dataset=train_dataset,
+    #     peft_config=peft_config,
+    # )
+    # trainer.train()
+    # trainer.save_model(os.path.join(model_dir, 'lora'))
+    # trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
+    
+    ############## FULL ###################
     trainer = GRPOTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        peft_config=peft_config,
     )
     trainer.train()
-    trainer.save_model(os.path.join(model_dir, 'lora'))
-    trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
+    trainer.save_model(os.path.join(model_dir, 'merge'))
+    trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))
+
+
+
+
+
     
