@@ -85,7 +85,7 @@ python scripts/train.py
 ## 🧠 Technical Foundation
 
 ### Core Components
-1. **GRPO Algorithm** - Gradient-based Reward Optimization
+1. **GRPO Algorithm** - Group Relative Policy Optimization
 2. **VLLM Acceleration** - Paged Attention implementation
 3. **Dynamic Batching** - Flexible sequence processing
 4. **Memory Optimization** - Gradient checkpointing + DeepSpeed Zero-3
