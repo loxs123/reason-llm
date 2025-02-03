@@ -170,8 +170,8 @@ class GRPOTrainer(Trainer):
                     "This argument can only be used when the `model` argument is a string."
                 )
 
-        if peft_config is not None:
-            model = get_peft_model(model, peft_config)
+        # if peft_config is not None:
+        #     model = get_peft_model(model, peft_config)
 
         # Reference model
         if is_deepspeed_zero3_enabled():
@@ -344,12 +344,12 @@ if __name__ == '__main__':
     if os.path.exists(os.path.join(model_dir, 'lora')):
         model = AutoModelForCausalLM.from_pretrained(model_dir)
         print(f"Loading the LoRA adapter from {os.path.join(model_dir, 'lora')}")
-        lora_model = PeftModel.from_pretrained(
+        model = PeftModel.from_pretrained(
             model,
             os.path.join(model_dir, 'lora'),
             torch_dtype=torch.float16,
         )
-        model = lora_model.merge_and_unload()
+        # model = lora_model.merge_and_unload()
     elif os.path.exists(os.path.join(model_dir, 'merge')):
         print(f"Loading model from {os.path.join(model_dir, 'merge')}")
         model = AutoModelForCausalLM.from_pretrained(os.path.join(model_dir, 'merge'))
