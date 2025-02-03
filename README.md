@@ -99,9 +99,7 @@ python scripts/train.py
 
 ## 🤝 Contribution Roadmap
     - [ ] Complete initial benchmark results
-    - [√] Lora Model Load In Trainer
-    - [ ] load checkpint? or only model?
-    - [ ] Support Full fine-tuning
+    - [ ] load checkpoint? or only model?
 ---
 
 *Empowering efficient LLM fine-tuning for everyone* 🤖
