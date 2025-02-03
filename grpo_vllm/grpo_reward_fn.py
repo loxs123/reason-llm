@@ -22,7 +22,7 @@ def length_reward_fn(msgs):
 
     # clip 0 - 1
     
-    base = len(msgs[-1]['content']) - 5000 / 25000
+    base = (len(msgs[-1]['content']) - 5000) / 25000
 
     if base < 0: base = 0.0
     if base > 1: base = 1.0

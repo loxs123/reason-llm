@@ -6,6 +6,7 @@ import gc
 import numpy as np
 import torch
 from vllm import LLM, SamplingParams
+import random
 
 from .grpo_reward_fn import group_reward_fn
 from .utils import apply_lora, ThinkCountLogitsProcessor
@@ -18,7 +19,7 @@ data_file = os.path.join(current_dir, "data", "train.csv")
 MAX_MODEL_LEN = 8192
 SAMPLE_NUM = 8
 MAX_NUM_SEQ = 32
-INT_NUM = 512
+INT_NUM = 1024
 
 GPU_NUM = len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
 
@@ -108,6 +109,9 @@ class TrainingSamplingCoordinator:
             for row in reader:
                 data.append(row)
         
+        random.seed(0)
+        random.shuffle(data)
+        
         # for i, row in enumerate(data):
         i = 0
         while len(cur_msgs) < INT_NUM:
@@ -131,7 +135,6 @@ class TrainingSamplingCoordinator:
             buffer_msgs.append(batch_prompts)
             buffer_labels.append(row['answer'])
 
-            
             # self.cur_data_idx += 1
             if (i + 1) % (MAX_NUM_SEQ // SAMPLE_NUM) == 0:
                 cur_msgs += self._to_buffer(buffer_msgs, buffer_labels)

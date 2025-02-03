@@ -39,9 +39,8 @@ from transformers import (
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.utils import is_peft_available
 
-from trl.models import create_reference_model, prepare_deepspeed, unwrap_model_for_generation
-from trl.trainer.utils import generate_model_card, get_comet_experiment_url
-from trl.data_utils import apply_chat_template, is_conversational, maybe_apply_chat_template
+from trl.models import create_reference_model, prepare_deepspeed
+from trl.data_utils import maybe_apply_chat_template
 
 from peft import LoraConfig, PeftModel
 
@@ -283,7 +282,7 @@ class GRPOTrainer(Trainer):
 
         prompt_inputs = self.processing_class(
             prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
-        )['input_ids'][:,:512]
+        )['input_ids']
         # only for single turn
         assistant_id = self.processing_class('<｜Assistant｜>', add_special_tokens=False)['input_ids'][0]
         prefix_mask = create_prefix_mask(prompt_inputs, assistant_id)
@@ -348,66 +347,6 @@ class GRPOTrainer(Trainer):
             super().log(logs)
         self._metrics.clear()
 
-    def create_model_card(
-        self,
-        model_name: Optional[str] = None,
-        dataset_name: Optional[str] = None,
-        tags: Union[str, list[str], None] = None,
-    ):
-        """
-        Creates a draft of a model card using the information available to the `Trainer`.
-
-        Args:
-            model_name (`str` or `None`, *optional*, defaults to `None`):
-                Name of the model.
-            dataset_name (`str` or `None`, *optional*, defaults to `None`):
-                Name of the dataset used for training.
-            tags (`str`, `list[str]` or `None`, *optional*, defaults to `None`):
-                Tags to be associated with the model card.
-        """
-        if not self.is_world_process_zero():
-            return
-
-        if hasattr(self.model.config, "_name_or_path") and not os.path.isdir(self.model.config._name_or_path):
-            base_model = self.model.config._name_or_path
-        else:
-            base_model = None
-
-        tags = tags or []
-        if isinstance(tags, str):
-            tags = [tags]
-
-        if hasattr(self.model.config, "unsloth_version"):
-            tags.append("unsloth")
-
-        citation = textwrap.dedent(
-            """\
-            @article{zhihong2024deepseekmath,
-                title        = {{DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models}},
-                author       = {Zhihong Shao and Peiyi Wang and Qihao Zhu and Runxin Xu and Junxiao Song and Mingchuan Zhang and Y. K. Li and Y. Wu and Daya Guo},
-                year         = 2024,
-                eprint       = {arXiv:2402.03300},
-            """
-        )
-
-        model_card = generate_model_card(
-            base_model=base_model,
-            model_name=model_name,
-            hub_model_id=self.hub_model_id,
-            dataset_name=dataset_name,
-            tags=tags,
-            wandb_url=wandb.run.get_url() if is_wandb_available() and wandb.run is not None else None,
-            comet_url=get_comet_experiment_url(),
-            trainer_name="GRPO",
-            trainer_citation=citation,
-            paper_title="DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models",
-            paper_id="2402.03300",
-        )
-
-        model_card.save(os.path.join(self.args.output_dir, "README.md"))
-
-
-
 if __name__ == '__main__':
 
     # 加载数据集
@@ -424,7 +363,7 @@ if __name__ == '__main__':
         )
         model = lora_model.merge_and_unload()
     elif os.path.exists(os.path.join(model_dir, 'merge')):
-        print(f"Loading model from {os.path.exists(model_dir, 'merge')}")
+        print(f"Loading model from {os.path.join(model_dir, 'merge')}")
         model = AutoModelForCausalLM.from_pretrained(os.path.join(model_dir, 'merge'))
     else:
         print(f"Loading model from {model_dir}")
@@ -450,34 +389,34 @@ if __name__ == '__main__':
         log_level="info",
     )
 
-    # ############## LORA ###################
-    # # 配置LoRA
-    # peft_config = LoraConfig(
-    #     task_type="CAUSAL_LM",
-    #     r=32,
-    #     target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-    #     lora_alpha=64,
-    #     lora_dropout=0.1,
-    #     bias="none",
-    # )
+    ############## LORA ###################
+    # 配置LoRA
+    peft_config = LoraConfig(
+        task_type="CAUSAL_LM",
+        r=32,
+        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+        lora_alpha=64,
+        lora_dropout=0.1,
+        bias="none",
+    )
 
-    # # 执行训练
-    # trainer = GRPOTrainer(
-    #     model=model,
-    #     args=training_args,
-    #     train_dataset=train_dataset,
-    #     peft_config=peft_config,
-    # )
-    # trainer.train()
-    # trainer.save_model(os.path.join(model_dir, 'lora'))
-    # trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
-    
-    ############## FULL ###################
+    # 执行训练
     trainer = GRPOTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
+        peft_config=peft_config,
     )
     trainer.train()
-    trainer.save_model(os.path.join(model_dir, 'merge'))
-    trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))
+    trainer.save_model(os.path.join(model_dir, 'lora'))
+    trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
+    
+    # ############## FULL ###################
+    # trainer = GRPOTrainer(
+    #     model=model,
+    #     args=training_args,
+    #     train_dataset=train_dataset,
+    # )
+    # trainer.train()
+    # trainer.save_model(os.path.join(model_dir, 'merge'))
+    # trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))
