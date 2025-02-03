@@ -331,7 +331,7 @@ if __name__ == '__main__':
     training_args = GRPOConfig(
         # output_dir=os.path.join(model_dir, 'lora'), # lora
         output_dir=os.path.join(model_dir, 'tmp'), # full
-        num_train_epochs=3,
+        num_train_epochs=1,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
         save_strategy="no",
