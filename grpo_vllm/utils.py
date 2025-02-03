@@ -53,12 +53,16 @@ def create_prefix_mask(input_ids, assistant_id):
     
     return mask
 
-
 def apply_lora(model_dir):
-    model_name_or_path = model_dir
+    
     output_path = os.path.join(model_dir, 'merge')
     lora_path = os.path.join(model_dir, 'lora')
     if not os.path.exists(lora_path): return False
+
+    if os.path.exists(output_path):
+        model_name_or_path = output_path
+    else:
+        model_name_or_path = model_dir
     
     print(f"Loading the base model from {model_name_or_path}")
     base_tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=False, trust_remote_code=True)
