@@ -68,21 +68,6 @@ class GRPOTrainer(Trainer):
     Trainer for the Group Relative Policy Optimization (GRPO) method. This algorithm was initially proposed in the
     paper [DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models](https://huggingface.co/papers/2402.03300).
 
-    Example:
-
-    ```python
-    from datasets import load_dataset
-    from trl import GRPOTrainer
-
-    dataset = load_dataset("trl-lib/tldr", split="train")
-
-    trainer = GRPOTrainer(
-        model="Qwen/Qwen2-0.5B-Instruct",
-        train_dataset=dataset,
-    )
-
-    trainer.train()
-    ```
 
     Args:
         model (`Union[str, PreTrainedModel]`):
@@ -170,15 +155,17 @@ class GRPOTrainer(Trainer):
                     "This argument can only be used when the `model` argument is a string."
                 )
 
-        if peft_config is not None:
-            model = get_peft_model(model, peft_config)
+        # if peft_config is not None:
+        #     model = get_peft_model(model, peft_config)
 
         # Reference model
         if is_deepspeed_zero3_enabled():
-            self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
+            self.ref_model = AutoModelForCausalLM.from_pretrained(model_dir, **model_init_kwargs)
         elif peft_config is None:
-            # If PEFT configuration is not provided, create a reference model based on the initial model.
-            self.ref_model = create_reference_model(model)
+            self.ref_model = AutoModelForCausalLM.from_pretrained(model_dir, **model_init_kwargs)
+            for param in self.ref_model.parameters():
+                param.requires_grad = False
+            self.ref_model.eval()
         else:
             # If PEFT is used, the reference model is not needed since the adapter can be disabled
             # to revert to the initial model.
@@ -192,11 +179,7 @@ class GRPOTrainer(Trainer):
 
         # Data collator
         def data_collator(features):  # No data collation is needed in GRPO
-            # ans = {}
-            # for key in features[0]:
-            #     ans[key] = [item[key] for item in features]
             return features
-            # return ans
 
         self.beta = args.beta
 
@@ -235,13 +218,6 @@ class GRPOTrainer(Trainer):
                 self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
-        # # Bnb Quantized models doesn't support `.to` operation.
-        # if (
-        #     self.ref_model
-        #     and self.place_model_on_device
-        #     and not getattr(self.ref_model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
-        # ):
-        #     self._move_model_to_device(self.ref_model, args.device)
 
     def _set_signature_columns_if_needed(self):
         # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
@@ -341,29 +317,18 @@ if __name__ == '__main__':
     train_dataset = GRPODataset(buffer_file, data_file, SAMPLE_NUM)
     
     # 初始化模型
-    if os.path.exists(os.path.join(model_dir, 'lora')):
-        model = AutoModelForCausalLM.from_pretrained(model_dir)
-        print(f"Loading the LoRA adapter from {os.path.join(model_dir, 'lora')}")
-        lora_model = PeftModel.from_pretrained(
-            model,
-            os.path.join(model_dir, 'lora'),
-            torch_dtype=torch.float16,
-        )
-        model = lora_model.merge_and_unload()
-    elif os.path.exists(os.path.join(model_dir, 'merge')):
+    if os.path.exists(os.path.join(model_dir, 'merge')):
         print(f"Loading model from {os.path.join(model_dir, 'merge')}")
         model = AutoModelForCausalLM.from_pretrained(os.path.join(model_dir, 'merge'))
     else:
         print(f"Loading model from {model_dir}")
         model = AutoModelForCausalLM.from_pretrained(model_dir)
-
-    model.gradient_checkpointing_enable()
-
+    
     # 配置训练参数
     training_args = GRPOConfig(
         # output_dir=os.path.join(model_dir, 'lora'), # lora
         output_dir=os.path.join(model_dir, 'tmp'), # full
-        num_train_epochs=1,
+        num_train_epochs=3,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
         save_strategy="no",
@@ -377,7 +342,8 @@ if __name__ == '__main__':
         log_level="info",
     )
 
-    ############## LORA ###################
+    ############## LORA START ################
+
     # 配置LoRA
     peft_config = LoraConfig(
         task_type="CAUSAL_LM",
@@ -387,6 +353,14 @@ if __name__ == '__main__':
         lora_dropout=0.1,
         bias="none",
     )
+
+    model = get_peft_model(model, peft_config)
+
+    ############# LoRA END ###################
+    
+    model.enable_input_require_grads()
+    model.config.use_cache = False
+    model.gradient_checkpointing_enable()
 
     # 执行训练
     trainer = GRPOTrainer(
