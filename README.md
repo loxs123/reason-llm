@@ -97,8 +97,9 @@ python scripts/train.py
 4. [AIME Dataset](https://huggingface.co/datasets/di-zhang-fdu/AIME_1983_2024)
 
 ## 🤝 Contribution Roadmap
-- [ ] Complete initial benchmark results
-
+    - [ ] Complete initial benchmark results
+    - [ ] Lora Model Load In Trainer
+    - [ ] load checkpint? or only model?
 ---
 
 *Empowering efficient LLM fine-tuning for everyone* 🤖
