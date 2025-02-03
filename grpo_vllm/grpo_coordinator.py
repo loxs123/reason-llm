@@ -19,7 +19,7 @@ data_file = os.path.join(current_dir, "data", "train.csv")
 MAX_MODEL_LEN = 8192
 SAMPLE_NUM = 8
 MAX_NUM_SEQ = 32
-INT_NUM = 1024
+INT_NUM = 8
 
 GPU_NUM = len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
 
@@ -30,6 +30,8 @@ class TrainingSamplingCoordinator:
         self.llm = None
         self.tokenizer = None
         self.cur_data_idx = 0
+        self.acc = []
+        self.reward = []
         self._initialize_components()
 
     def _initialize_components(self):
@@ -81,7 +83,13 @@ class TrainingSamplingCoordinator:
                 completions=completed_batch[j : j+SAMPLE_NUM],
                 label=buffer_labels[j // SAMPLE_NUM],
             )
+            for r in rewards:
+                if r > 0.5: self.acc.append(1)
+                else: self.acc.append(0)
+                self.reward.append(r)
+
             rewards = np.array(rewards)
+
             if rewards.std() < 0.05:
                 continue
             advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4)
@@ -181,13 +189,10 @@ class TrainingSamplingCoordinator:
         if len(data) == 0:
             print('没有样本写入到缓冲区')
             return
-
-        acc_num = 0
-        reward = 0
-        for msg in data:
-            if msg['reward'] > 0.5: acc_num += 1
-            reward += msg['reward']
-        print(f'平均正确率：{acc_num / len(data)}, 平均奖励：{reward / len(data)}')
+        
+        print(f'平均正确率：{sum(self.acc) / len(self.acc)}，平均奖励：{sum(self.reward) / len(self.reward)}')
+        self.acc.clear()
+        self.reward.clear()
 
         """写入缓冲区文件"""
         with open(buffer_file, "w") as f:

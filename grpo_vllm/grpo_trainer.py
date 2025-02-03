@@ -13,10 +13,6 @@
 # limitations under the License.
 
 import os
-import sys
-import random
-import time
-import textwrap
 import datetime
 from collections import defaultdict
 from typing import Any, Callable, Optional, Union
@@ -49,20 +45,12 @@ from grpo_vllm.grpo_config import GRPOConfig
 from grpo_vllm.grpo_dataset import GRPODataset
 
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(current_dir)
 
 model_dir = os.path.join(current_dir, "model")
 log_dir = os.path.join(current_dir, "log")
 buffer_file = os.path.join(current_dir, "data", "buffer.json")
 data_file = os.path.join(current_dir, "data", "train.csv")
-MAX_MODEL_LEN = 8192
 SAMPLE_NUM = 8
-MAX_NUM_SEQ = 32
-INT_NUM = 32
-
-GPU_NUM = len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
-
-assert MAX_NUM_SEQ % SAMPLE_NUM == 0
 
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
