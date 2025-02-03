@@ -1,23 +1,16 @@
 import os
-import time
-import sys
-import datetime
 import json
 import csv
 import copy
 import gc
 import numpy as np
 import torch
-from peft import LoraConfig, PeftModel
-from transformers import AutoModelForCausalLM
 from vllm import LLM, SamplingParams
 
-current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(current_dir)
-
-from grpo_vllm import GRPOTrainer, GRPOConfig, GRPODataset, group_reward_fn
+from .grpo_reward_fn import group_reward_fn
 from .utils import apply_lora, ThinkCountLogitsProcessor
 
+current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 model_dir = os.path.join(current_dir, "model")
 log_dir = os.path.join(current_dir, "log")
 buffer_file = os.path.join(current_dir, "data", "buffer.json")
@@ -84,7 +77,7 @@ class TrainingSamplingCoordinator:
             # 处理结果
             rewards = group_reward_fn(
                 prompts=None,
-                completions=completed_batch[j:j+SAMPLE_NUM],
+                completions=completed_batch[j : j+SAMPLE_NUM],
                 label=buffer_labels[j // SAMPLE_NUM],
             )
             rewards = np.array(rewards)
@@ -93,10 +86,11 @@ class TrainingSamplingCoordinator:
             advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4)
 
             # 保存到当前批次
-            for msg, advantage in zip(completed_batch[j:j+SAMPLE_NUM], advantages):
+            for msg, advantage,reward in zip(completed_batch[j:j+SAMPLE_NUM], advantages, rewards):
                 cur_msgs.append({
                     "completion": msg,
                     "advantage": advantage.item(),
+                    "reward": reward.item(),
                     "label": buffer_labels[j // SAMPLE_NUM],
                 })
         return cur_msgs
@@ -113,20 +107,19 @@ class TrainingSamplingCoordinator:
             reader = csv.DictReader(f)
             for row in reader:
                 data.append(row)
-    
+        
         # for i, row in enumerate(data):
         i = 0
         while len(cur_msgs) < INT_NUM:
 
             row = data[(self.cur_data_idx + i) % len(data)]
             
-            # 构造基础提示
-            
             sys_set = ("You are a the most powerful math expert. "
                     "Please solve the problems with deep resoning. "
                     "You are careful and always recheck your conduction. "
                     "You will never give answer directly until you have enough confidence. "
-                    "You should think step-by-step. Return final answer within \\boxed{}, after taking modulo 1000.")
+                    "You should think step-by-step. Return final answer within \\boxed{}, "
+                    "after taking modulo 1000.")
             
             # 为每个问题生成SAMPLE_NUM个样本
             batch_prompts = [
@@ -181,6 +174,18 @@ class TrainingSamplingCoordinator:
         ]
 
     def _write_buffer(self, data):
+
+        if len(data) == 0:
+            print('没有样本写入到缓冲区')
+            return
+
+        acc_num = 0
+        reward = 0
+        for msg in data:
+            if msg['reward'] > 0.5: acc_num += 1
+            reward += msg['reward']
+        print(f'平均正确率：{acc_num / len(data)}, 平均奖励：{reward / len(data)}')
+
         """写入缓冲区文件"""
         with open(buffer_file, "w") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -197,11 +202,9 @@ class TrainingSamplingCoordinator:
 
     def run_cycle(self):
         """执行完整的训练-采样周期"""
-
         # 1. 采样阶段
         self.generate_samples()
         # 2. 训练阶段
         self.train_model()
         # 3. 更新模型
         self._load_model()
-            

@@ -432,7 +432,6 @@ if __name__ == '__main__':
 
     model.gradient_checkpointing_enable()
 
-
     # 配置训练参数
     training_args = GRPOConfig(
         # output_dir=os.path.join(model_dir, 'lora'), # lora
@@ -482,9 +481,3 @@ if __name__ == '__main__':
     trainer.train()
     trainer.save_model(os.path.join(model_dir, 'merge'))
     trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))
-
-
-
-
-
-    

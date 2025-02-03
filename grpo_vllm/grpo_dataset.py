@@ -2,7 +2,6 @@ import torch.utils.data as data
 import json
 import time
 import random
-import os
 
 class GRPODataset(data.Dataset):
     def __init__(self, filename, train_file, max_retries=10, retry_interval=0.5, sample_num = 8):
@@ -18,13 +17,6 @@ class GRPODataset(data.Dataset):
 
         self.index = [i for i in range(self.len_data)]
         random.shuffle(self.index)
-        
-        # with open(train_file) as f:
-        #     self.len_data = len(f.read().split('\n'))
-    
-    def last_change_mtime(self):
-        mod_time = os.path.getmtime(self.filename)
-        return mod_time
     
     def _wait_for_file(self):
         """等待文件可读"""

@@ -48,7 +48,6 @@ def _reward_fn(msgs, label):
     r1 = correct_reward_fn(msgs, label)
     r2 = length_reward_fn(msgs)
     if r1 > 0.5: return r1 + r2 * 0.2
-    # if r1 > 0.5: return r1
     else: return r1
 
 def batch_group_reward_fn(prompts=None, completions=None, label=None):
@@ -56,7 +55,6 @@ def batch_group_reward_fn(prompts=None, completions=None, label=None):
     for c,l in zip(completions, label):
         for _c in c:
             rewards.append(_reward_fn(_c, l))
-
     return rewards
 
 def group_reward_fn(prompts=None, completions=None, label=None):

@@ -85,8 +85,3 @@ class GRPOConfig(TrainingArguments):
         metadata={"help": "KL coefficient."},
     )
 
-    int_time : float = field(
-        default=1200.0,
-        metadata={"help": "Training and sampling interval time"},
-    )
-    

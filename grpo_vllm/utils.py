@@ -42,7 +42,6 @@ def prepare_deepspeed(model, accelerator):
     model.eval()
     return model
 
-
 def create_prefix_mask(input_ids, assistant_id):
     mask = torch.zeros_like(input_ids)  # 初始化全零矩阵
     
