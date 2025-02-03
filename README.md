@@ -12,6 +12,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 - Serialized sampling & training pipeline for optimal GPU utilization
 - Supports training with context lengths up to 8K tokens
 - Batch-agnostic answer processing
+- Supports Lora fine-tuning
 
 **🚀 Accelerated Performance**
 - VLLM-powered sampling acceleration
@@ -97,8 +98,10 @@ python scripts/train.py
 4. [AIME Dataset](https://huggingface.co/datasets/di-zhang-fdu/AIME_1983_2024)
 
 ## 🤝 Contribution Roadmap
-- [ ] Complete initial benchmark results
-
+    - [ ] Complete initial benchmark results
+    - [√] Lora Model Load In Trainer
+    - [ ] load checkpint? or only model?
+    - [ ] Support Full fine-tuning
 ---
 
 *Empowering efficient LLM fine-tuning for everyone* 🤖

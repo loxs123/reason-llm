@@ -68,7 +68,10 @@ class GRPOTrainer(Trainer):
     Trainer for the Group Relative Policy Optimization (GRPO) method. This algorithm was initially proposed in the
     paper [DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models](https://huggingface.co/papers/2402.03300).
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2ac4f3b3833252575f9e19e42bd8db103b1b1287
     Args:
         model (`Union[str, PreTrainedModel]`):
             Model to be trained. Can be either:
