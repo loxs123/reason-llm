@@ -68,22 +68,6 @@ class GRPOTrainer(Trainer):
     Trainer for the Group Relative Policy Optimization (GRPO) method. This algorithm was initially proposed in the
     paper [DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models](https://huggingface.co/papers/2402.03300).
 
-    Example:
-
-    ```python
-    from datasets import load_dataset
-    from trl import GRPOTrainer
-
-    dataset = load_dataset("trl-lib/tldr", split="train")
-
-    trainer = GRPOTrainer(
-        model="Qwen/Qwen2-0.5B-Instruct",
-        train_dataset=dataset,
-    )
-
-    trainer.train()
-    ```
-
     Args:
         model (`Union[str, PreTrainedModel]`):
             Model to be trained. Can be either:
@@ -339,27 +323,9 @@ if __name__ == '__main__':
 
     # 加载数据集
     train_dataset = GRPODataset(buffer_file, data_file, SAMPLE_NUM)
-    
-    # 初始化模型
-    if os.path.exists(os.path.join(model_dir, 'lora')):
-        model = AutoModelForCausalLM.from_pretrained(model_dir)
-        print(f"Loading the LoRA adapter from {os.path.join(model_dir, 'lora')}")
-        model = PeftModel.from_pretrained(
-            model,
-            os.path.join(model_dir, 'lora'),
-            torch_dtype=torch.float16,
-        )
-        # model = lora_model.merge_and_unload()
-    elif os.path.exists(os.path.join(model_dir, 'merge')):
-        print(f"Loading model from {os.path.join(model_dir, 'merge')}")
-        model = AutoModelForCausalLM.from_pretrained(os.path.join(model_dir, 'merge'))
-    else:
-        print(f"Loading model from {model_dir}")
-        model = AutoModelForCausalLM.from_pretrained(model_dir)
 
-    model.gradient_checkpointing_enable()
 
-    # 配置训练参数
+     # 配置训练参数
     training_args = GRPOConfig(
         # output_dir=os.path.join(model_dir, 'lora'), # lora
         output_dir=os.path.join(model_dir, 'tmp'), # full
@@ -378,15 +344,32 @@ if __name__ == '__main__':
     )
 
     ############## LORA ###################
-    # 配置LoRA
-    peft_config = LoraConfig(
-        task_type="CAUSAL_LM",
-        r=32,
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-        lora_alpha=64,
-        lora_dropout=0.1,
-        bias="none",
-    )
+    
+    # 初始化模型
+    if os.path.exists(os.path.join(model_dir, 'lora')):
+        model = AutoModelForCausalLM.from_pretrained(model_dir)
+        print(f"Loading the LoRA adapter from {os.path.join(model_dir, 'lora')}")
+        model = PeftModel.from_pretrained(
+            model,
+            os.path.join(model_dir, 'lora'),
+            torch_dtype=torch.float16,
+        )
+        # model = lora_model.merge_and_unload()
+    else:
+        print(f"Loading model from {model_dir}")
+        model = AutoModelForCausalLM.from_pretrained(model_dir)
+        # 配置LoRA
+        peft_config = LoraConfig(
+            task_type="CAUSAL_LM",
+            r=32,
+            target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+            lora_alpha=64,
+            lora_dropout=0.1,
+            bias="none",
+        )
+        model = get_peft_model(model, peft_config)
+
+    model.gradient_checkpointing_enable()
 
     # 执行训练
     trainer = GRPOTrainer(
