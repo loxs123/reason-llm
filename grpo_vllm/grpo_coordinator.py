@@ -18,8 +18,8 @@ buffer_file = os.path.join(current_dir, "data", "buffer.json")
 data_file = os.path.join(current_dir, "data", "train.csv")
 MAX_MODEL_LEN = 8192
 SAMPLE_NUM = 8
-MAX_NUM_SEQ = 32
-INT_NUM = 8
+MAX_NUM_SEQ = 64
+INT_NUM = 1024
 
 GPU_NUM = len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
 
