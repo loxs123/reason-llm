@@ -12,7 +12,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 - Serialized sampling & training pipeline for optimal GPU utilization
 - Supports training with context lengths up to 8K tokens
 - Batch-agnostic answer processing
-- Support Lora fine-tuning
+- Supports Lora fine-tuning
 
 **🚀 Accelerated Performance**
 - VLLM-powered sampling acceleration
