@@ -53,7 +53,6 @@ def create_prefix_mask(input_ids, assistant_id):
     
     return mask
 
-
 def apply_lora(model_dir):
     model_name_or_path = model_dir
     

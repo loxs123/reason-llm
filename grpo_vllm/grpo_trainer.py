@@ -68,22 +68,6 @@ class GRPOTrainer(Trainer):
     Trainer for the Group Relative Policy Optimization (GRPO) method. This algorithm was initially proposed in the
     paper [DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models](https://huggingface.co/papers/2402.03300).
 
-    Example:
-
-    ```python
-    from datasets import load_dataset
-    from trl import GRPOTrainer
-
-    dataset = load_dataset("trl-lib/tldr", split="train")
-
-    trainer = GRPOTrainer(
-        model="Qwen/Qwen2-0.5B-Instruct",
-        train_dataset=dataset,
-    )
-
-    trainer.train()
-    ```
-
     Args:
         model (`Union[str, PreTrainedModel]`):
             Model to be trained. Can be either:
@@ -389,6 +373,11 @@ if __name__ == '__main__':
     trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
     
     # ############## FULL ###################
+
+    # model.enable_input_require_grads()
+    # model.config.use_cache = False
+    # model.gradient_checkpointing_enable()
+
     # trainer = GRPOTrainer(
     #     model=model,
     #     args=training_args,
