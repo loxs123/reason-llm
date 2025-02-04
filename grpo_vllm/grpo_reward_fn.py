@@ -1,6 +1,6 @@
 
 import re
-
+from collections import Counter
 # TODO 加入一些更精细化的奖励
 
 #extract the integer answer modulo 1000 from the boxes
@@ -30,35 +30,40 @@ def length_reward_fn(msgs):
     return 1.0 - base
 
 
-def correct_reward_fn(msgs, label):
+def correct_reward_fn(msgs, labelset):
+    p = extract_boxed_text(msgs[-1]['content'])
+    correct = p in labelset
+    if correct: return 1.0, p
+    else: return 0.0, p
 
+def _reward_fn(msgs, label):
+    r1, p = correct_reward_fn(msgs, label)
+    r2 = length_reward_fn(msgs)
+    if r1 > 0.5: return r1, p
+    else: return r1, p
+
+def group_reward_fn(prompts=None, completions=None, label=None):
     labelset = set()
     if type(label) is str:
         nums = re.findall(r'\d+', label)
         for num in nums: labelset.add(int(num))
     if type(label) is int:
         labelset.add(label)
-    
-    correct = extract_boxed_text(msgs[-1]['content']) in labelset
-    if correct: return 1.0
-    else: return 0.0
 
-
-def _reward_fn(msgs, label):
-    r1 = correct_reward_fn(msgs, label)
-    r2 = length_reward_fn(msgs)
-    if r1 > 0.5: return r1 + r2 * 0.2
-    else: return r1
-
-def batch_group_reward_fn(prompts=None, completions=None, label=None):
     rewards = []
-    for c,l in zip(completions, label):
-        for _c in c:
-            rewards.append(_reward_fn(_c, l))
-    return rewards
 
-def group_reward_fn(prompts=None, completions=None, label=None):
-    rewards = []
+    predicts = []
     for c in completions:
-        rewards.append(_reward_fn(c, label))
-    return rewards
+        r, p = _reward_fn(c, labelset)
+        rewards.append(r)
+        predicts.append(p)
+
+    # 使用 Counter 统计每个元素出现的次数
+    counts = Counter(predicts)
+    
+    # 找到出现次数最多的元素
+    me, mc = counts.most_common(1)[0]
+
+    correct = me in labelset
+    
+    return rewards, correct

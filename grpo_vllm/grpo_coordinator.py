@@ -16,10 +16,11 @@ model_dir = os.path.join(current_dir, "model")
 log_dir = os.path.join(current_dir, "log")
 buffer_file = os.path.join(current_dir, "data", "buffer.json")
 data_file = os.path.join(current_dir, "data", "train.csv")
+test_data_file = os.path.join(current_dir, "data", "test.csv")
 MAX_MODEL_LEN = 8192
 SAMPLE_NUM = 8
-MAX_NUM_SEQ = 64
-INT_NUM = 256
+MAX_NUM_SEQ = 32
+INT_NUM = 1024
 
 GPU_NUM = len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
 
@@ -30,8 +31,9 @@ class TrainingSamplingCoordinator:
         self.llm = None
         self.tokenizer = None
         self.cur_data_idx = 0
-        self.acc = []
+        self.acc_ave = []
         self.reward = []
+        self.acc_major = []
         self._initialize_components()
 
     def _initialize_components(self):
@@ -78,20 +80,22 @@ class TrainingSamplingCoordinator:
         for j in range(0, len(completed_batch), SAMPLE_NUM):
 
             # 处理结果
-            rewards = group_reward_fn(
+            rewards, correct = group_reward_fn(
                 prompts=None,
                 completions=completed_batch[j : j+SAMPLE_NUM],
                 label=buffer_labels[j // SAMPLE_NUM],
             )
             for r in rewards:
-                if r > 0.5: self.acc.append(1)
-                else: self.acc.append(0)
+                if r > 0.5: self.acc_ave.append(1)
+                else: self.acc_ave.append(0)
                 self.reward.append(r)
+            self.acc_major.append(correct)
 
             rewards = np.array(rewards)
 
             if rewards.std() < 0.05:
                 continue
+                
             advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4)
 
             # 保存到当前批次
@@ -126,17 +130,9 @@ class TrainingSamplingCoordinator:
 
             row = data[(self.cur_data_idx + i) % len(data)]
             
-            sys_set = ("You are a the most powerful math expert. "
-                    "Please solve the problems with deep resoning. "
-                    "You are careful and always recheck your conduction. "
-                    "You will never give answer directly until you have enough confidence. "
-                    "You should think step-by-step. Return final answer within \\boxed{}, "
-                    "after taking modulo 1000.")
-            
             # 为每个问题生成SAMPLE_NUM个样本
             batch_prompts = [
-                [{"role":"system", "content":sys_set},
-                    {"role": "user", "content": row['question']}]
+                [{"role": "user", "content": row['question'] + '\nIf the final answer is a number larger than 1000, take modulo 1000.'}]
                 for _ in range(SAMPLE_NUM)
             ]
 
@@ -148,6 +144,8 @@ class TrainingSamplingCoordinator:
                 cur_msgs += self._to_buffer(buffer_msgs, buffer_labels)
                 buffer_msgs.clear()
                 buffer_labels.clear()
+                print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}，收集轨迹数量：{len(cur_msgs)}')
+                # print()
 
             i += 1
                 
@@ -157,7 +155,7 @@ class TrainingSamplingCoordinator:
     def _generate_batch(self, prompts):
         """执行批量生成"""
         sampling_params = SamplingParams(
-            temperature=1.0,
+            temperature=0.6,
             min_p=0.01,
             max_tokens=MAX_MODEL_LEN,
             skip_special_tokens=True,
@@ -190,8 +188,9 @@ class TrainingSamplingCoordinator:
             print('没有样本写入到缓冲区')
             return
         
-        print(f'平均正确率：{sum(self.acc) / len(self.acc)}，平均奖励：{sum(self.reward) / len(self.reward)}')
-        self.acc.clear()
+        print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}')
+        self.acc_ave.clear()
+        self.acc_major.clear()
         self.reward.clear()
 
         """写入缓冲区文件"""
@@ -208,11 +207,57 @@ class TrainingSamplingCoordinator:
         torch.cuda.empty_cache()
         os.system(f'CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file "{current_dir}/grpo_vllm/deepspeed_zero3.yaml" "{current_dir}/grpo_vllm/grpo_trainer.py"')
 
+
+    def test(self):
+        print("\n--- 开始测试阶段 ---")
+        buffer_msgs = []
+        buffer_labels = []
+        cur_msgs = []
+
+        data = []
+        with open(test_data_file, "r") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                data.append(row)
+
+        self.acc_ave.clear()
+        self.acc_major.clear()
+        self.reward.clear()
+        
+        for i in range(len(data)):
+
+            row = data[i]
+            
+            # 为每个问题生成SAMPLE_NUM个样本
+            batch_prompts = [
+                [{"role": "user", "content": row['question'] + "\nIf the final answer is a number larger than 1000 or smaller than 0, take modulo 1000."}]
+                for _ in range(SAMPLE_NUM)
+            ]
+
+            buffer_msgs.append(batch_prompts)
+            buffer_labels.append(row['answer'])
+
+            # self.cur_data_idx += 1
+            if (i + 1) % (MAX_NUM_SEQ // SAMPLE_NUM) == 0:
+                cur_msgs += self._to_buffer(buffer_msgs, buffer_labels)
+                buffer_msgs.clear()
+                buffer_labels.clear()
+                print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}')
+
+        print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}')
+        
+        self.acc_ave.clear()
+        self.acc_major.clear()
+        self.reward.clear()
+        
     def run_cycle(self):
         """执行完整的训练-采样周期"""
+        # self._load_model() 0 base
         # 1. 采样阶段
         self.generate_samples()
         # 2. 训练阶段
-        self.train_model()
+        self.train_model() # lora：base model_dir lora lora
         # 3. 更新模型
-        self._load_model()
+        self._load_model() # merge : base + lora
+
+
