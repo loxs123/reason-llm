@@ -260,4 +260,6 @@ class TrainingSamplingCoordinator:
         # 3. 更新模型
         self._load_model() # merge : base + lora
 
+        self.test()
+
 
