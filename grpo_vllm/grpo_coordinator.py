@@ -68,7 +68,7 @@ class TrainingSamplingCoordinator:
             trust_remote_code=True,
             tensor_parallel_size=GPU_NUM,
             max_num_seqs=MAX_NUM_SEQ,
-            gpu_memory_utilization=0.96,
+            gpu_memory_utilization=0.9,
         )
 
     def _to_buffer(self, buffer_msgs, buffer_labels):
@@ -175,6 +175,7 @@ class TrainingSamplingCoordinator:
             formatted_prompts,
             sampling_params=sampling_params,
         )
+        torch.cuda.empty_cache()
 
         # 构造完整对话记录
         return [
