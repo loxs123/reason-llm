@@ -56,8 +56,11 @@ def group_reward_fn(prompts=None, completions=None, label=None):
     for c in completions:
         r, p = _reward_fn(c, labelset)
         rewards.append(r)
-        predicts.append(p)
-
+        if p != -1:
+            predicts.append(p)
+            
+    if len(predicts)== 0:
+        predicts.append(-1)
     # 使用 Counter 统计每个元素出现的次数
     counts = Counter(predicts)
     
