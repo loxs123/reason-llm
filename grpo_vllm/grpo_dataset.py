@@ -16,7 +16,7 @@ class GRPODataset(data.Dataset):
         self.len_data = len(data)
 
         self.index = [i for i in range(self.len_data)]
-        random.shuffle(self.index)
+        # random.shuffle(self.index)
     
     def _wait_for_file(self):
         """等待文件可读"""
@@ -32,7 +32,7 @@ class GRPODataset(data.Dataset):
         raise RuntimeError(f"无法读取 {self.filename}，可能被持续写入")
 
     def __len__(self):
-        return self.len_data
+        return 128
 
     def __getitem__(self, index):
         data = self._wait_for_file()

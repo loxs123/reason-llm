@@ -40,10 +40,11 @@ def stream_response():
 
             # 构造请求的payload
             data = {
-                "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",  # 模型名称
+                "model": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",  # 模型名称
                 # "model": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",  # 模型名称
                 "messages": [
-                    {"role": "user", "content": text + '\nIf the final answer is a number larger than 1000, take modulo 1000. '}
+                    # {"role": "user", "content": text + '\nIf the final answer is a number larger than 1000, take modulo 1000. please write a python program to solve.'}
+                    {"role": "user", "content": text + '\n这是一道数学难题，请输出结果除以1000的余数。'}
                 ],
                 "stream": True,  # 开启流式输出
                 "max_tokens": 16192,

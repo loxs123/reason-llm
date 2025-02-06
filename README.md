@@ -49,6 +49,7 @@ pip install -e .
 ```bash
 ├── data
 │   ├── train.csv        # Training dataset
+│   ├── test.csv         # Test dataset
 │   └── buffer.json      # Auto-generated training buffer
 ├── model                # Model directory
 │   ├── config.json

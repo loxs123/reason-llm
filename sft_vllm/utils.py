@@ -66,7 +66,7 @@ def create_suffix_mask(input_ids, eos_id, ):
         if len(eos_idx) > 0:
             mask[i, eos_idx[0] + 1:] = 1  # 从最后一个 assistant_id 位置开始置 1
     
-    mask = 1.0 - mask
+    mask = 1 - mask
     return mask
 
 def apply_lora(model_dir):

@@ -8,7 +8,7 @@ import torch
 from vllm import LLM, SamplingParams
 import random
 
-from .grpo_reward_fn import group_reward_fn
+from .sft_reward_fn import group_reward_fn
 from .utils import apply_lora, ThinkCountLogitsProcessor
 
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,7 +30,7 @@ class TrainingSamplingCoordinator:
     def __init__(self):
         self.llm = None
         self.tokenizer = None
-        self.cur_data_idx = 32
+        self.cur_data_idx = 0
         self.acc_ave = []
         self.reward = []
         self.acc_major = []
@@ -99,12 +99,13 @@ class TrainingSamplingCoordinator:
 
             # 保存到当前批次
             for msg, advantage,reward in zip(completed_batch[j:j+sample_num], advantages, rewards):
-                cur_msgs.append({
-                    "completion": msg,
-                    "advantage": advantage.item(),
-                    "reward": reward.item(),
-                    "label": buffer_labels[j // sample_num],
-                })
+                if advantage > 0:
+                    cur_msgs.append({
+                        "completion": msg,
+                        "advantage": advantage.item(),
+                        "reward": reward.item(),
+                        "label": buffer_labels[j // sample_num],
+                    })
         return cur_msgs
 
     def generate_samples(self):
@@ -144,7 +145,6 @@ class TrainingSamplingCoordinator:
                 buffer_msgs.clear()
                 buffer_labels.clear()
                 print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}，收集轨迹数量：{len(cur_msgs)}')
-
 
             i += 1
                 
@@ -205,7 +205,7 @@ class TrainingSamplingCoordinator:
         del self.llm
         gc.collect()
         torch.cuda.empty_cache()
-        os.system(f'CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file "{current_dir}/grpo_vllm/deepspeed_zero3.yaml" "{current_dir}/grpo_vllm/grpo_trainer.py"')
+        os.system(f'CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file "{current_dir}/sft_vllm/deepspeed_zero3.yaml" "{current_dir}/sft_vllm/sft_trainer.py"')
 
 
     def test(self):
@@ -243,6 +243,9 @@ class TrainingSamplingCoordinator:
                 buffer_msgs.clear()
                 buffer_labels.clear()
                 print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}')
+        
+        if len(buffer_msgs) > 0:
+            cur_msgs += self._to_buffer(buffer_msgs, buffer_labels)
 
         print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}')
         
@@ -259,5 +262,5 @@ class TrainingSamplingCoordinator:
         self.train_model() # lora：base model_dir lora lora
         # 3. 更新模型
         self._load_model() # merge : base + lora
-
+        # 4. 测试模型
         self.test()
