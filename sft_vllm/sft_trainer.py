@@ -58,7 +58,6 @@ if is_wandb_available():
 
 if __name__ == '__main__':
 
-
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
     # 加载数据集
     train_dataset = SFTDataset(buffer_file, tokenizer, sample_num = SAMPLE_NUM)
@@ -92,6 +91,7 @@ if __name__ == '__main__':
         logging_steps=5,
         log_level="info",
         lr_scheduler_type="constant",
+        remove_unused_columns=False
     )
 
     ############## LORA START ################

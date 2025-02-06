@@ -8,8 +8,10 @@ import torch
 from vllm import LLM, SamplingParams
 import random
 
+from peft import PeftModel
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
 from .sft_reward_fn import group_reward_fn
-from .utils import apply_lora, ThinkCountLogitsProcessor
 
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 model_dir = os.path.join(current_dir, "model")
@@ -26,6 +28,38 @@ GPU_NUM = len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
 
 assert MAX_NUM_SEQ % SAMPLE_NUM == 0
 
+
+def apply_lora(model_dir):
+    model_name_or_path = model_dir
+    
+    output_path = os.path.join(model_dir, 'merge')
+    lora_path = os.path.join(model_dir, 'lora')
+    if not os.path.exists(lora_path): return False
+
+    model_name_or_path = model_dir
+    
+    print(f"Loading the base model from {model_name_or_path}")
+    base_tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    base = AutoModelForCausalLM.from_pretrained(model_name_or_path, torch_dtype=torch.bfloat16, trust_remote_code=True)
+    # base.generation_config = GenerationConfig.from_pretrained(model_name_or_path)
+
+    print(f"Loading the LoRA adapter from {lora_path}")
+
+    lora_model = PeftModel.from_pretrained(
+        base,
+        lora_path,
+        torch_dtype=torch.float16,
+    )
+
+    print("Applying the LoRA")
+    model = lora_model.merge_and_unload()
+
+    print(f"Saving the target model to {output_path}")
+    model.save_pretrained(output_path)
+    base_tokenizer.save_pretrained(output_path)
+
+    return True
+
 class TrainingSamplingCoordinator:
     def __init__(self):
         self.llm = None
@@ -39,9 +73,9 @@ class TrainingSamplingCoordinator:
     def _initialize_components(self):
         """初始化模型和处理器"""
         self._load_model()
-        self.think_processor = ThinkCountLogitsProcessor(
-            "<think>", self.tokenizer
-        )
+        # self.think_processor = ThinkCountLogitsProcessor(
+        #     "<think>", self.tokenizer
+        # )
 
     def _load_model(self):
         """加载或重新加载模型"""
@@ -158,7 +192,7 @@ class TrainingSamplingCoordinator:
             min_p=0.01,
             max_tokens=MAX_MODEL_LEN,
             skip_special_tokens=True,
-            logits_processors=[self.think_processor],
+            # logits_processors=[self.think_processor],
         )
 
         # 将提示转换为模型输入格式
@@ -219,7 +253,7 @@ class TrainingSamplingCoordinator:
             reader = csv.DictReader(f)
             for row in reader:
                 data.append(row)
-        data = data[:]
+        # data = data[:]
         self.acc_ave.clear()
         self.acc_major.clear()
         self.reward.clear()

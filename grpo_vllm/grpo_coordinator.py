@@ -244,6 +244,9 @@ class TrainingSamplingCoordinator:
                 buffer_labels.clear()
                 print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}')
 
+        if len(buffer_msgs) > 0:
+            cur_msgs += self._to_buffer(buffer_msgs, buffer_labels)
+
         print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}')
         
         self.acc_ave.clear()
