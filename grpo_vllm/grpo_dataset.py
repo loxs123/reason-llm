@@ -12,8 +12,8 @@ class GRPODataset(data.Dataset):
         self.retry_interval = retry_interval
         self.sample_num = sample_num
 
-        data = self._wait_for_file()
-        self.len_data = len(data)
+        # data = self._wait_for_file()
+        self.len_data = 128
 
         self.index = [i for i in range(self.len_data)]
         # random.shuffle(self.index)
@@ -36,4 +36,6 @@ class GRPODataset(data.Dataset):
 
     def __getitem__(self, index):
         data = self._wait_for_file()
-        return data[self.index[index] % len(data)]
+        item = data[self.index[index] % len(data)]
+        item['advantage'] += 0.05
+        return item

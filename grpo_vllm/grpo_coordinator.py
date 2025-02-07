@@ -68,7 +68,7 @@ class TrainingSamplingCoordinator:
             trust_remote_code=True,
             tensor_parallel_size=GPU_NUM,
             max_num_seqs=MAX_NUM_SEQ,
-            gpu_memory_utilization=0.95,
+            gpu_memory_utilization=0.9,
         )
 
     def _to_buffer(self, buffer_msgs, buffer_labels):
@@ -92,19 +92,28 @@ class TrainingSamplingCoordinator:
 
             rewards = np.array(rewards)
 
-            if rewards.std() < 0.05:
-                continue
+            # if rewards.std() < 0.05:
+            #     continue
                 
             advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4)
 
             # 保存到当前批次
             for msg, advantage,reward in zip(completed_batch[j:j+sample_num], advantages, rewards):
-                cur_msgs.append({
-                    "completion": msg,
-                    "advantage": advantage.item(),
-                    "reward": reward.item(),
-                    "label": buffer_labels[j // sample_num],
-                })
+                # cur_msgs.append({
+                #     "completion": msg,
+                #     "advantage": advantage.item(),
+                #     "reward": reward.item(),
+                #     "label": buffer_labels[j // sample_num],
+                # })
+
+                # 只训练好的
+                if reward > 0.5:
+                    cur_msgs.append({
+                        "completion": msg,
+                        "advantage": advantage.item(),
+                        "reward": reward.item(),
+                        "label": buffer_labels[j // sample_num],
+                    })
         return cur_msgs
 
     def generate_samples(self):
@@ -144,8 +153,7 @@ class TrainingSamplingCoordinator:
                 buffer_msgs.clear()
                 buffer_labels.clear()
                 print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}，收集轨迹数量：{len(cur_msgs)}')
-
-
+            
             i += 1
                 
         self.cur_data_idx += i
@@ -208,7 +216,7 @@ class TrainingSamplingCoordinator:
         os.system(f'CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file "{current_dir}/grpo_vllm/deepspeed_zero3.yaml" "{current_dir}/grpo_vllm/grpo_trainer.py"')
 
 
-    def test(self):
+    def test_model(self):
         print("\n--- 开始测试阶段 ---")
         buffer_msgs = []
         buffer_labels = []
@@ -262,5 +270,5 @@ class TrainingSamplingCoordinator:
         self.train_model() # lora：base model_dir lora lora
         # 3. 更新模型
         self._load_model() # merge : base + lora
-
-        self.test()
+        # 4. 测试模型
+        self.test_model()
