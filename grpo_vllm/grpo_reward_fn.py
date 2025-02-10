@@ -1,7 +1,7 @@
 
 import re
 from collections import Counter
-from Levenshtein import ratio as levenshtein_ratio
+# from Levenshtein import ratio as levenshtein_ratio
 # TODO 加入一些更精细化的奖励
 
 #extract the integer answer modulo 1000 from the boxes

@@ -7,24 +7,47 @@ import numpy as np
 import torch
 from vllm import LLM, SamplingParams
 import random
+import time
 
 from .grpo_reward_fn import group_reward_fn
 from .utils import apply_lora, ThinkCountLogitsProcessor
 
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-model_dir = os.path.join(current_dir, "model")
+# model_dir = os.path.join(current_dir, "model")
+model_dir = '/root/shared-storage/DeepSeek-R1-Distill-Qwen-14B'
 log_dir = os.path.join(current_dir, "log")
 buffer_file = os.path.join(current_dir, "data", "buffer.json")
 data_file = os.path.join(current_dir, "data", "train.csv")
 test_data_file = os.path.join(current_dir, "data", "test.csv")
-MAX_MODEL_LEN = 8192
+MAX_MODEL_LEN = 12192
 SAMPLE_NUM = 8
 MAX_NUM_SEQ = 32
 INT_NUM = 128
 
+random.seed((time.time() // 10) % 124291)
+
 GPU_NUM = len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
 
 assert MAX_NUM_SEQ % SAMPLE_NUM == 0
+
+system_settings = [
+    r"You are a the most powerful math expert. Please solve the problems with deep resoning. You are careful and always recheck your conduction. You will never give answer directly until you have enough confidence. You should think step-by-step. Return final answer within \\boxed{}, after taking modulo 1000.",
+    r"You are a reliable math expert, known for accurate and well-reasoned solutions. Work through the problem methodically, rechecking your logic and calculations. Only when you're certain of your answer, provide it in \boxed{}, and take it modulo 1000.",
+    r"Act as a conscientious math solver. Approach the problem with care, ensuring each part is understood and correctly addressed. Once you're confident in your solution, present it in \boxed{}, and don't forget to compute it modulo 1000.",
+    r"You are a deep-thinking math expert. Engage with the problem thoughtfully, exploring underlying principles. After thorough analysis and confirmation, box your answer in \boxed{}, and adjust it to modulo 1000.",
+    r"As a precise math assistant, your approach should be step-by-step, with careful consideration of all elements. Ensure you've double-checked your work before finalizing. Present your answer in \boxed{}, and apply modulo 1000.",
+    r"You are a thorough math expert. Tackle the problem with meticulous attention to detail, verifying each step along the way. Only when you're fully satisfied with your solution, provide the answer in \boxed{}, and remember to take it modulo 1000.",
+    r"Act as a thoughtful math solver. Consider the problem from various perspectives, ensuring comprehensive understanding. Once you've arrived at a solution with high confidence, enclose it in \boxed{}, and adjust it to modulo 1000.",
+    r"You are a detailed-oriented math expert. Approach the problem with precision, examining every detail. After multiple validations, present your answer in \boxed{}, and make sure to compute it modulo 1000.",
+    r"As an intelligent math assistant, your goal is to solve the problem with deep understanding. Think through each part thoroughly, ensuring no mistakes are made. Once confident, provide the answer in \boxed{}, and apply modulo 1000.",
+    r"You are a careful and methodical math solver. Proceed through the problem step-by-step, rechecking your work at each stage. Only when you're absolutely sure of your solution, present it in \boxed{}, and take it modulo 1000.",
+    r"Act as a profound math expert. Contemplate the problem extensively, exploring all possible angles. Once you've reached a conclusion with utmost certainty, box your answer in \boxed{}, and adjust it to modulo 1000.",
+    r"You are a meticulous problem solver in mathematics. Approach the question with deep thought, ensuring every aspect is considered. After rigorous verification, present your final answer in \boxed{}, and don't forget to apply modulo 1000.",
+    r"As a highly skilled math assistant, your approach should be systematic and thorough. Think step-by-step, justifying each move. Only when you're fully confident in your reasoning, provide the answer in \boxed{}, and remember to take it modulo 1000.",
+    r"You are a rigorous math expert. Delve into the problem with careful consideration, ensuring no detail is overlooked. After confirming your solution through multiple checks, present the answer in \boxed{}, adjusted to modulo 1000.",
+    r"Act as a seasoned mathematician, known for deep analytical skills. Tackle the problem methodically, verifying each logical step. Once you've reached a conclusion with absolute certainty, express the answer enclosed in \boxed{}, and make sure to compute it modulo 1000.",
+    r"You are an advanced mathematics solver. Approach the problem with meticulous care, ensuring each step is thoroughly understood before proceeding. Only provide the final answer when you are entirely confident in your solution, and present it within \boxed{}, after applying modulo 1000.",
+]
 
 class TrainingSamplingCoordinator:
     def __init__(self):
@@ -68,7 +91,7 @@ class TrainingSamplingCoordinator:
             trust_remote_code=True,
             tensor_parallel_size=GPU_NUM,
             max_num_seqs=MAX_NUM_SEQ,
-            gpu_memory_utilization=0.9,
+            gpu_memory_utilization=0.96,
         )
 
     def _to_buffer(self, buffer_msgs, buffer_labels):
@@ -238,15 +261,14 @@ class TrainingSamplingCoordinator:
             
             # 为每个问题生成SAMPLE_NUM个样本
             batch_prompts = [
-                [{"role": "user", "content": row['question'] + "\nIf the final answer is a number larger than 1000, take modulo 1000."}],
-                [{"role": "user", "content": row['question'] + "\nIf the final answer is a number larger than 1000, take modulo 1000."}]
+                [{"role": "user", "content": row['question'] + '\n' + sys_set}] for sys_set in system_settings
             ]
 
             buffer_msgs.append(batch_prompts)
             buffer_labels.append(row['answer'])
 
             # self.cur_data_idx += 1
-            if (i + 1) % (MAX_NUM_SEQ // 2) == 0:
+            if (i + 1) % (MAX_NUM_SEQ // 16) == 0:
                 cur_msgs += self._to_buffer(buffer_msgs, buffer_labels)
                 buffer_msgs.clear()
                 buffer_labels.clear()
