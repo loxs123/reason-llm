@@ -318,6 +318,14 @@ class GRPOTrainer(Trainer):
 
 if __name__ == '__main__':
 
+    totol = 128 # 每次采样128个
+    num_gpu = 1
+
+    per_device_train_batch_size = 4
+    gradient_accumulation_steps = 4
+
+    epoch_steps = totol / per_device_train_batch_size / gradient_accumulation_steps / num_gpu
+
     # 加载数据集
     train_dataset = GRPODataset(buffer_file)
     model = AutoModelForCausalLM.from_pretrained(model_dir)
@@ -326,8 +334,8 @@ if __name__ == '__main__':
         # output_dir=os.path.join(model_dir, 'lora'), # lora
         output_dir=os.path.join(model_dir, 'tmp'), # full
         num_train_epochs=1,
-        per_device_train_batch_size=4,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=per_device_train_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
         save_strategy="epoch",
         logging_dir=os.path.join(log_dir, f"experiment_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"),
         report_to="tensorboard",
@@ -375,12 +383,13 @@ if __name__ == '__main__':
     else:
         checkpoint_path = checkpoint_paths[-1]
         if len(checkpoint_paths) >= 2:
+            print('删除',checkpoint_paths[-2])
             shutil.rmtree(checkpoint_paths[-2])
 
         print(f'从{checkpoint_path}开始训练...')
         steps = int(checkpoint_path.split('-')[-1])
 
-        training_args.num_train_epochs = steps // 4 + 1
+        training_args.num_train_epochs = steps // epoch_steps + 1
         trainer.train(checkpoint_path)
 
     # for vllm

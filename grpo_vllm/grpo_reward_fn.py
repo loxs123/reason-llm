@@ -1,10 +1,8 @@
 
 import re
 from collections import Counter
-# from Levenshtein import ratio as levenshtein_ratio
-# TODO 加入一些更精细化的奖励
 
-#extract the integer answer modulo 1000 from the boxes
+
 def extract_boxed_text(text):
     matches = re.findall(r'oxed{(.*?)}', text)
     if not matches:
@@ -37,37 +35,44 @@ def length_reward_fn(msgs):
 
     # clip 0 - 1
     
-    base = (len(msgs[-1]['content']) - 5000) / 25000
+    content = msgs[-1]['content']
 
-    if base < 0: base = 0.0
-    if base > 1: base = 1.0
-
-    return 1.0 - base
-
-def llm_score(msgs):
-    prompt = """**Scoring Criteria:**
-
-Please score the given text on a scale from 0 to 1, where the score represents the degree to which the text lacks clarity, logical flow, organization, and contains redundancy. A lower score indicates the presence of more of these issues.
-
-1. **Logical Clarity**: Evaluate whether the text presents its ideas in a coherent and understandable way.
-   - *Poor logic*: The text is difficult to follow or lacks clear reasoning, making it hard to understand.
-
-2. **Organization**: Assess whether the text is well-structured, with information presented in a logical order.
-   - *Disorganized*: The text lacks clear structure, with ideas scattered and presented in a disjointed or confusing manner.
-
-3. **Conciseness**: Check for unnecessary repetition or redundancy in the text.
-   - *Repetition*: The same or similar points are restated multiple times, leading to redundancy and unnecessary length.
-
-Please provide a score based on the severity of these issues, with lower scores indicating more significant problems in terms of logic, organization, and repetition.
-
-The score should be displayed in the following format:  
-\[
-\\boxed{score}
-\]"""
+    words = set()
+    for i in range(0, len(content) - 20):
+        words.add(content[i:i+20])
     
+    return min((len(words) + 20) / 2000, 1.0) # 越长越好
+
+    # base = (len(msgs[-1]['content']) - 5000) / 25000
+
+    # if base < 0: base = 0.0
+    # if base > 1: base = 1.0
+
+    # return 1.0 - base
+
+# def llm_score(msgs):
+#     prompt = """**Scoring Criteria:**
+
+# Please score the given text on a scale from 0 to 1, where the score represents the degree to which the text lacks clarity, logical flow, organization, and contains redundancy. A lower score indicates the presence of more of these issues.
+
+# 1. **Logical Clarity**: Evaluate whether the text presents its ideas in a coherent and understandable way.
+#    - *Poor logic*: The text is difficult to follow or lacks clear reasoning, making it hard to understand.
+
+# 2. **Organization**: Assess whether the text is well-structured, with information presented in a logical order.
+#    - *Disorganized*: The text lacks clear structure, with ideas scattered and presented in a disjointed or confusing manner.
+
+# 3. **Conciseness**: Check for unnecessary repetition or redundancy in the text.
+#    - *Repetition*: The same or similar points are restated multiple times, leading to redundancy and unnecessary length.
+
+# Please provide a score based on the severity of these issues, with lower scores indicating more significant problems in terms of logic, organization, and repetition.
+
+# The score should be displayed in the following format:  
+# \[
+# \\boxed{score}
+# \]"""
     
-    return 1.0
-    
+#     return 1.0
+
 
 def correct_reward_fn(msgs, labelset):
     p = extract_boxed_text(msgs[-1]['content'])
@@ -76,11 +81,12 @@ def correct_reward_fn(msgs, labelset):
     else: return 0.0, p
 
 def _reward_fn(msgs, label):
-    r1, p = correct_reward_fn(msgs, label)
-    r2 = format_reward_fn(msgs)
+    r1, p = correct_reward_fn(msgs, label) # 回答正确
+    r2 = format_reward_fn(msgs) # 格式
+    r3 = length_reward_fn(msgs) # 格式
     
-    # return (r1 + r2) / 2, p
-    return r2, p
+    return (r1 + r3) / 2, p
+    # return r2, p
 
 def group_reward_fn(prompts=None, completions=None, label=None):
     labelset = set()

@@ -226,7 +226,10 @@ class TrainingSamplingCoordinator:
         del self.llm
         gc.collect()
         torch.cuda.empty_cache()
+        # for single gpu use deepspeed_zero2
         os.system(f'CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file "{current_dir}/grpo_vllm/deepspeed_zero2.yaml" "{current_dir}/grpo_vllm/grpo_trainer.py"')
+        # for multi gpu use deepspeed_zero3
+        # os.system(f'CUDA_VISIBLE_DEVICES=0,1,2,4 accelerate launch --config_file "{current_dir}/grpo_vllm/deepspeed_zero3.yaml" "{current_dir}/grpo_vllm/grpo_trainer.py"')
 
     def test_model(self):
         print("\n--- 开始测试阶段 ---")
@@ -271,7 +274,7 @@ class TrainingSamplingCoordinator:
         self.acc_ave.clear()
         self.acc_major.clear()
         self.reward.clear()
-        
+
     def run_cycle(self):
         """执行完整的训练-采样周期"""
         # self._load_model() 0 base
@@ -283,3 +286,4 @@ class TrainingSamplingCoordinator:
         self._load_model() # merge : base + lora
         # 4. 测试模型
         self.test_model()
+
