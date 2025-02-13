@@ -65,7 +65,7 @@ def create_suffix_mask(input_ids, eos_id, ):
         eos_idx = (row == eos_id).nonzero(as_tuple=True)[0]
 
         if len(eos_idx) > 0:
-            mask[i, eos_idx[0] + 1:] = 1  # 从最后一个 assistant_id 位置开始置 1
+            mask[i, eos_idx[0]: ] = 1  # 从最后一个 assistant_id 位置开始置 1
     
     mask = 1.0 - mask
     return mask
@@ -73,7 +73,7 @@ def create_suffix_mask(input_ids, eos_id, ):
 def apply_lora(model_dir):
     model_name_or_path = model_dir
     
-    output_path = os.path.join(model_dir, 'merge_')
+    output_path = os.path.join(model_dir, 'merge')
     merge_model_path = os.path.join(model_dir, 'merge')
     lora_path = os.path.join(model_dir, 'lora')
     if not os.path.exists(lora_path): return False
@@ -99,23 +99,23 @@ def apply_lora(model_dir):
     print(f"Saving the target model to {output_path}")
     model.save_pretrained(output_path)
 
-    quant_config = {
-        "zero_point": True,   # 启用零点量化
-        "q_group_size": 128,  # 权重分组大小
-        "w_bit": 4,           # 4-bit 量化
-        "version": "GEMM"     # 使用 GEMM 内核（或选择 "GEMV"）
-    }
+    # quant_config = {
+    #     "zero_point": True,   # 启用零点量化
+    #     "q_group_size": 128,  # 权重分组大小
+    #     "w_bit": 4,           # 4-bit 量化
+    #     "version": "GEMM"     # 使用 GEMM 内核（或选择 "GEMV"）
+    # }
 
-    # 使用 AutoAWQ 量化器
-    quant_model = AutoAWQForCausalLM.from_pretrained(
-        output_path,
-        quant_config=quant_config,
-        device_map="auto"  # 自动分配 GPU/CPU
-    )
+    # # 使用 AutoAWQ 量化器
+    # quant_model = AutoAWQForCausalLM.from_pretrained(
+    #     output_path,
+    #     quant_config=quant_config,
+    #     device_map="auto"  # 自动分配 GPU/CPU
+    # )
 
-    # 3. 保存量化模型和分词器
-    print(f"Saving AWQ quantized model to {output_path}")
-    quant_model.save_quantized(merge_model_path)
+    # # 3. 保存量化模型和分词器
+    # print(f"Saving AWQ quantized model to {output_path}")
+    # quant_model.save_quantized(merge_model_path)
 
     base_tokenizer.save_pretrained(merge_model_path)
 

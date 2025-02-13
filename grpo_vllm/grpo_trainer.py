@@ -15,6 +15,8 @@
 import os
 import datetime
 import json
+import glob
+import shutil
 from collections import defaultdict
 from typing import Any, Callable, Optional, Union
 
@@ -47,11 +49,9 @@ from grpo_vllm.grpo_dataset import GRPODataset
 
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-model_dir = os.path.join(current_dir, "model")
+model_dir = os.path.join(current_dir, "autodl-tmp/model")
 log_dir = os.path.join(current_dir, "log")
 buffer_file = os.path.join(current_dir, "data", "buffer.json")
-data_file = os.path.join(current_dir, "data", "train.csv")
-SAMPLE_NUM = 8
 
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
@@ -243,14 +243,16 @@ class GRPOTrainer(Trainer):
             raise ValueError("The GRPOTrainer does not support returning outputs")
         
         prompts_text = [maybe_apply_chat_template({'messages': example['completion'] }, self.processing_class)["text"] for example in inputs]
-
         prompt_inputs = self.processing_class(
             prompts_text, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
         )['input_ids'] # 只训练前面的
-        # only for single turn
-        assistant_id = self.processing_class('<｜Assistant｜>', add_special_tokens=False)['input_ids'][0]
+
+        # assistant_id = self.processing_class('<｜Assistant｜>', add_special_tokens=False)['input_ids'][0]
+        # pad_id = self.processing_class.eos_token_id
+        assistant_id = self.processing_class('assistant', add_special_tokens=False)['input_ids'][0]
+        pad_id = self.processing_class.pad_token_id
         prefix_mask = create_prefix_mask(prompt_inputs, assistant_id)
-        suffix_mask = create_suffix_mask(prompt_inputs, self.processing_class.eos_token_id)
+        suffix_mask = create_suffix_mask(prompt_inputs, pad_id)
         
         mask = prefix_mask * suffix_mask
         
@@ -277,7 +279,6 @@ class GRPOTrainer(Trainer):
         # per_token_logps = per_token_logps[:, prompt_length - 1 :]
 
         # [2 - last] logps
-
         with torch.inference_mode():
             if self.ref_model is not None:
                 ref_per_token_logps = get_per_token_logps(self.ref_model, prompt_completion_ids)
@@ -301,7 +302,7 @@ class GRPOTrainer(Trainer):
         completion_length = self.accelerator.gather_for_metrics(mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)
 
-        mean_kl = ((per_token_kl * mask).sum(dim=1) / mask.sum(dim=1)).mean()
+        mean_kl = ((per_token_kl * mask).sum(dim=1) / (mask.sum(dim=1) + 1e-4)).mean()
         self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
         return loss
@@ -318,31 +319,21 @@ class GRPOTrainer(Trainer):
 if __name__ == '__main__':
 
     # 加载数据集
-    train_dataset = GRPODataset(buffer_file, data_file, SAMPLE_NUM)
-    
-    # 初始化模型
-    # if os.path.exists(os.path.join(model_dir, 'merge')):
-    #     print(f"Loading model from {os.path.join(model_dir, 'merge')}")
-    #     model = AutoModelForCausalLM.from_pretrained(os.path.join(model_dir, 'merge'))
-    # else:
-    #     print(f"Loading model from {model_dir}")
-    #     model = AutoModelForCausalLM.from_pretrained(model_dir)
-
-
+    train_dataset = GRPODataset(buffer_file)
     model = AutoModelForCausalLM.from_pretrained(model_dir)
     # 配置训练参数
     training_args = GRPOConfig(
         # output_dir=os.path.join(model_dir, 'lora'), # lora
         output_dir=os.path.join(model_dir, 'tmp'), # full
         num_train_epochs=1,
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=32,
+        per_device_train_batch_size=4,
+        gradient_accumulation_steps=4,
         save_strategy="epoch",
         logging_dir=os.path.join(log_dir, f"experiment_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"),
         report_to="tensorboard",
         overwrite_output_dir=True,
         bf16=True,
-        logging_steps=5,
+        logging_steps=1,
         log_level="info",
         lr_scheduler_type="constant",
     )
@@ -352,9 +343,9 @@ if __name__ == '__main__':
     # 配置LoRA
     peft_config = LoraConfig(
         task_type="CAUSAL_LM",
-        r=32,
+        r=128,
         target_modules=["q_proj", "v_proj", "k_proj", "gate_proj", "up_proj", "down_proj"],
-        lora_alpha=32,
+        lora_alpha=128,
         lora_dropout=0.05,
         bias="none",
     )
@@ -375,20 +366,24 @@ if __name__ == '__main__':
         peft_config=peft_config,
     )
 
-    checkpoint_path = 'tmp/checkpoint-4'
-    if os.path.exists(os.path.join(model_dir, checkpoint_path ,'trainer_state.json')):
-        with open(os.path.join(model_dir, checkpoint_path ,'trainer_state.json')) as f:
-            data = json.load(f)
-        data['epoch'] = 0.0
-        data['global_step'] = 0
-
-        with open(os.path.join(model_dir, checkpoint_path ,'trainer_state.json'), 'w') as f:
-            json.dump(data, f, ensure_ascii=False,indent=4)
-
-        trainer.train(os.path.join(model_dir, checkpoint_path))
-    else:
-        trainer.train()
+    checkpoint_paths = glob.glob(os.path.join(model_dir, 'tmp/checkpoint-*'))
+    checkpoint_paths.sort(key = lambda x: int(x.split('-')[-1]))
     
+    if len(checkpoint_paths) == 0:
+        print('从头开始训练')
+        trainer.train()
+    else:
+        checkpoint_path = checkpoint_paths[-1]
+        if len(checkpoint_paths) >= 2:
+            shutil.rmtree(checkpoint_paths[-2])
+
+        print(f'从{checkpoint_path}开始训练...')
+        steps = int(checkpoint_path.split('-')[-1])
+
+        training_args.num_train_epochs = steps // 4 + 1
+        trainer.train(checkpoint_path)
+
+    # for vllm
     trainer.save_model(os.path.join(model_dir, 'lora'))
     trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
     
@@ -403,6 +398,22 @@ if __name__ == '__main__':
     #     args=training_args,
     #     train_dataset=train_dataset,
     # )
-    # trainer.train()
+    # checkpoint_paths = glob.glob(os.path.join(model_dir, 'tmp/checkpoint-*'))
+    # checkpoint_paths.sort(key = lambda x: int(x.split('-')[-1]))
+    
+    # if len(checkpoint_paths) == 0:
+    #     print('从头开始训练')
+    #     trainer.train()
+    # else:
+    #     checkpoint_path = checkpoint_paths[-1]
+    #     if len(checkpoint_paths) >= 2:
+    #         shutil.rmtree(checkpoint_paths[-2])
+
+    #     print(f'从{checkpoint_path}开始训练...')
+    #     steps = int(checkpoint_path.split('-')[-1])
+        
+    #     training_args.num_train_epochs = steps // 4 + 1 
+    #     trainer.train(os.path.join(model_dir, checkpoint_path))
+
     # trainer.save_model(os.path.join(model_dir, 'merge'))
     # trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))

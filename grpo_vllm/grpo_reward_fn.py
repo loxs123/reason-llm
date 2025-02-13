@@ -21,9 +21,17 @@ def extract_boxed_text(text):
 
 def format_reward_fn(msgs):
     """Reward function that checks if the completion has a specific format."""
-    pattern = r"^<think>.*?</think>.*?oxed{(.*?)}.*?$"
-    match = re.match(pattern, msgs[-1]['content'], re.DOTALL) 
-    return 1.0 if match else 0.0
+    # pattern = 
+    # pattern = r"<think>.*?</think>.*?oxed{(.*?)}"
+    think_num = len(re.findall(r"<think>.*?</think>", msgs[-1]['content'], re.DOTALL))
+    find_num = len(re.findall(r"<think>.*?</think>.*?oxed{.*?}", msgs[-1]['content'], re.DOTALL))
+
+    if find_num == 1 and think_num == 1:
+        return 1.0
+    elif think_num > 1:
+        return 0.5
+    else:
+        return 0.0
 
 def length_reward_fn(msgs):
 
@@ -71,7 +79,8 @@ def _reward_fn(msgs, label):
     r1, p = correct_reward_fn(msgs, label)
     r2 = format_reward_fn(msgs)
     
-    return (r1 + r2) / 2, p
+    # return (r1 + r2) / 2, p
+    return r2, p
 
 def group_reward_fn(prompts=None, completions=None, label=None):
     labelset = set()
