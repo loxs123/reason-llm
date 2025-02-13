@@ -5,3 +5,4 @@ accelerate
 peft
 deepspeed
 autoawq
+modelscope

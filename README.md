@@ -73,6 +73,13 @@ pip install -e .
 python scripts/train.py
 ```
 
+### Tips
+
+1. The larger the Lora rank, the better(≥128); a small Lora rank may lead to poor convergence.
+
+2. The larger the batch size, the better.
+
+
 ## 📊 Experimental Results (Pending)
 
 | Model                | Accuracy | Epochs | Cost | Hardware      |
