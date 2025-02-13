@@ -33,6 +33,15 @@ with open(system_setting_file) as f:
     d = f.read()
     system_settings = re.findall(r'```text\n(.*?)\n```', d, re.S)
 
+score_prompt = """Assume you are a careful math expert. Please rate the answer based on the following evaluation criteria, and provide the final score in \\boxed{} out of 10 points:
+
+1. Is each step of the reasoning coherent and logical? (3 points)
+
+2. Is the reasoning process clear? (3 points)
+
+3. What is the likelihood of the correctness of the final result? (4 points)"""
+
+
 assert MAX_NUM_SEQ % len(system_settings) == 0
 
 class TrainingSamplingCoordinator:
@@ -99,7 +108,17 @@ class TrainingSamplingCoordinator:
         # INT_NUM
         batch_prompts = [msg for msgs in buffer_msgs for msg in msgs]
         sample_num = len(buffer_msgs[0])
+        
         completed_batch = self._generate_batch(batch_prompts)
+
+        batch_score_prompts = [[{'role': 'system', 'content': score_prompt}, 
+                                {'role': 'user', 'content': f'Question:{i[-2]["content"]}\n\nAnswer:{i[-1]["content"]}'}]
+                                for i in completed_batch
+                                ]
+        
+        score_batch = self._generate_batch(batch_score_prompts)
+
+
         cur_msgs = []
         for j in range(0, len(completed_batch), sample_num):
 
@@ -108,6 +127,7 @@ class TrainingSamplingCoordinator:
                 prompts=None,
                 completions=completed_batch[j : j+sample_num],
                 label=buffer_labels[j // sample_num],
+                scores = batch_score_prompts[j : j+sample_num]
             )
             self.reward.extend(rewards)
             self.acc_ave.append(acc_rate)

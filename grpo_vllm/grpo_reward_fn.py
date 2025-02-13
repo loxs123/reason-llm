@@ -15,7 +15,7 @@ def extract_boxed_text(text):
         if not nums:
             return -1
         num = int(nums[-1])
-    return num % 1000
+    return num
 
 def format_reward_fn(msgs):
     """Reward function that checks if the completion has a specific format."""
@@ -41,7 +41,7 @@ def length_reward_fn(msgs):
     for i in range(0, len(content) - 20):
         words.add(content[i:i+20])
     
-    return min((len(words) + 20) / 2000, 1.0) # 越长越好
+    return min((len(words) + 20) / 10000, 1.0) # 越长越好
 
     # base = (len(msgs[-1]['content']) - 5000) / 25000
 
@@ -51,25 +51,7 @@ def length_reward_fn(msgs):
     # return 1.0 - base
 
 # def llm_score(msgs):
-#     prompt = """**Scoring Criteria:**
-
-# Please score the given text on a scale from 0 to 1, where the score represents the degree to which the text lacks clarity, logical flow, organization, and contains redundancy. A lower score indicates the presence of more of these issues.
-
-# 1. **Logical Clarity**: Evaluate whether the text presents its ideas in a coherent and understandable way.
-#    - *Poor logic*: The text is difficult to follow or lacks clear reasoning, making it hard to understand.
-
-# 2. **Organization**: Assess whether the text is well-structured, with information presented in a logical order.
-#    - *Disorganized*: The text lacks clear structure, with ideas scattered and presented in a disjointed or confusing manner.
-
-# 3. **Conciseness**: Check for unnecessary repetition or redundancy in the text.
-#    - *Repetition*: The same or similar points are restated multiple times, leading to redundancy and unnecessary length.
-
-# Please provide a score based on the severity of these issues, with lower scores indicating more significant problems in terms of logic, organization, and repetition.
-
-# The score should be displayed in the following format:  
-# \[
-# \\boxed{score}
-# \]"""
+#     
     
 #     return 1.0
 
@@ -80,15 +62,29 @@ def correct_reward_fn(msgs, labelset):
     if correct: return 1.0, p
     else: return 0.0, p
 
-def _reward_fn(msgs, label):
-    r1, p = correct_reward_fn(msgs, label) # 回答正确
-    r2 = format_reward_fn(msgs) # 格式
-    r3 = length_reward_fn(msgs) # 格式
-    
-    return (r1 + r3) / 2, p
-    # return r2, p
+def llm_reward_fn(score_msgs):
+    score = re.findall(r'oxed{(.*?)}', score_msgs[-1]['content'])
+    if len(score) == 0:
+        return 0.5
+    else:
+        try:
+            s = float(score[-1])
+            s = max(min(s, 10), 0) / 10
+        except:
+            s = 0.5
+        
+        return s
 
-def group_reward_fn(prompts=None, completions=None, label=None):
+
+def _reward_fn(msgs, score_msgs, label):
+    r1, p = correct_reward_fn(msgs, label) # 回答正确
+    # r2 = format_reward_fn(msgs) # 格式
+    # r3 = length_reward_fn(msgs) # 格式
+    r4 = llm_reward_fn(score_msgs)
+
+    return (r1 + r4) / 2, p
+
+def group_reward_fn(prompts=None, completions=None, label=None, scores = None):
     labelset = set()
     if type(label) is str:
         nums = re.findall(r'\d+', label)
@@ -100,8 +96,8 @@ def group_reward_fn(prompts=None, completions=None, label=None):
 
     predicts = []
     acc_cnt = 0
-    for c in completions:
-        r, p = _reward_fn(c, labelset)
+    for c,s in zip(completions, scores):
+        r, p = _reward_fn(c, s, labelset)
         rewards.append(r)
         if p != -1:
             predicts.append(p)
