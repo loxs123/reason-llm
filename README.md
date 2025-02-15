@@ -79,6 +79,7 @@ python scripts/train.py
 
 2. The larger the batch size, the better.
 
+3. The smaller INI_NUM, the better(1024 is too big).
 
 ## 📊 Experimental Results (Pending)
 
@@ -96,7 +97,7 @@ python scripts/train.py
 1. **GRPO Algorithm** - Group Relative Policy Optimization
 2. **VLLM Acceleration** - Paged Attention implementation
 3. **Dynamic Batching** - Flexible sequence processing
-4. **Memory Optimization** - Gradient checkpointing + DeepSpeed Zero-3
+4. **Memory Optimization** - Gradient checkpointing + DeepSpeed
 
 
 ## 📚 References
