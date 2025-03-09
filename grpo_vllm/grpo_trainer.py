@@ -49,7 +49,7 @@ from grpo_vllm.grpo_dataset import GRPODataset
 
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-model_dir = os.path.join(current_dir, "autodl-tmp/model")
+model_dir = os.path.join(current_dir, "model")
 log_dir = os.path.join(current_dir, "log")
 buffer_file = os.path.join(current_dir, "data", "buffer.json")
 
@@ -154,9 +154,6 @@ class GRPOTrainer(Trainer):
                     "You passed `model_init_kwargs` to the `GRPOConfig`, but your model is already instantiated. "
                     "This argument can only be used when the `model` argument is a string."
                 )
-
-        # if peft_config is not None:
-        #     model = get_peft_model(model, peft_config)
 
         # Reference model
         if is_deepspeed_zero3_enabled():
@@ -318,11 +315,14 @@ class GRPOTrainer(Trainer):
 
 if __name__ == '__main__':
 
-    totol = 128 # 每次采样128个
+    sample_num = 1024
+    repeat_num = 1
+
+    totol = sample_num * repeat_num # 每次采样1024个，每个样本重复3次
     num_gpu = 1
 
     per_device_train_batch_size = 4
-    gradient_accumulation_steps = 4
+    gradient_accumulation_steps = 16
 
     epoch_steps = totol / per_device_train_batch_size / gradient_accumulation_steps / num_gpu
 
@@ -331,12 +331,10 @@ if __name__ == '__main__':
     model = AutoModelForCausalLM.from_pretrained(model_dir)
     # 配置训练参数
     training_args = GRPOConfig(
-        # output_dir=os.path.join(model_dir, 'lora'), # lora
         output_dir=os.path.join(model_dir, 'tmp'), # full
         num_train_epochs=1,
         per_device_train_batch_size=per_device_train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
-        save_strategy="epoch",
         logging_dir=os.path.join(log_dir, f"experiment_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"),
         report_to="tensorboard",
         overwrite_output_dir=True,
@@ -346,34 +344,68 @@ if __name__ == '__main__':
         lr_scheduler_type="constant",
     )
 
-    ############## LORA START ################
+    # ############## LORA START ################
 
-    # 配置LoRA
-    peft_config = LoraConfig(
-        task_type="CAUSAL_LM",
-        r=128,
-        target_modules=["q_proj", "v_proj", "k_proj", "gate_proj", "up_proj", "down_proj"],
-        lora_alpha=128,
-        lora_dropout=0.05,
-        bias="none",
-    )
+    # # 配置LoRA
+    # peft_config = LoraConfig(
+    #     task_type="CAUSAL_LM",
+    #     r=256,
+    #     target_modules=["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    #     lora_alpha=256,
+    #     lora_dropout=0.05,
+    #     bias="none",
+    # )
 
-    model = get_peft_model(model, peft_config)
-
-    ############# LoRA END ###################
+    # model = get_peft_model(model, peft_config)
     
+    # model.enable_input_require_grads()
+    # model.config.use_cache = False  # 梯度检查点与cache不兼容
+    # model.base_model.gradient_checkpointing_enable()
+
+    # # 执行训练
+    # trainer = GRPOTrainer(
+    #     model=model,
+    #     args=training_args,
+    #     train_dataset=train_dataset,
+    #     peft_config=peft_config,
+    # )
+
+    # checkpoint_paths = glob.glob(os.path.join(model_dir, 'tmp/checkpoint-*'))
+    # checkpoint_paths.sort(key = lambda x: int(x.split('-')[-1]))
+    
+    # if len(checkpoint_paths) == 0:
+    #     print('从头开始训练')
+    #     trainer.train()
+    # else:
+    #     checkpoint_path = checkpoint_paths[-1]
+    #     if len(checkpoint_paths) >= 2:
+    #         print('删除',checkpoint_paths[-2])
+    #         shutil.rmtree(checkpoint_paths[-2])
+
+    #     print(f'从{checkpoint_path}开始训练...')
+    #     steps = int(checkpoint_path.split('-')[-1])
+
+    #     training_args.num_train_epochs = steps // epoch_steps + 1
+    #     trainer.train(checkpoint_path)
+
+    # # for vllm
+    # trainer.save_model(os.path.join(model_dir, 'lora'))
+    # trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
+
+    # ############# LoRA END ###################
+    
+    # ############## FULL ###################
+
     model.enable_input_require_grads()
-    model.config.use_cache = False  # 梯度检查点与cache不兼容
+    model.config.use_cache = False
     model.gradient_checkpointing_enable()
 
-    # 执行训练
     trainer = GRPOTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        peft_config=peft_config,
     )
-
+    
     checkpoint_paths = glob.glob(os.path.join(model_dir, 'tmp/checkpoint-*'))
     checkpoint_paths.sort(key = lambda x: int(x.split('-')[-1]))
     
@@ -392,37 +424,5 @@ if __name__ == '__main__':
         training_args.num_train_epochs = steps // epoch_steps + 1
         trainer.train(checkpoint_path)
 
-    # for vllm
-    trainer.save_model(os.path.join(model_dir, 'lora'))
-    trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
-    
-    # ############## FULL ###################
-
-    # model.enable_input_require_grads()
-    # model.config.use_cache = False
-    # model.gradient_checkpointing_enable()
-
-    # trainer = GRPOTrainer(
-    #     model=model,
-    #     args=training_args,
-    #     train_dataset=train_dataset,
-    # )
-    # checkpoint_paths = glob.glob(os.path.join(model_dir, 'tmp/checkpoint-*'))
-    # checkpoint_paths.sort(key = lambda x: int(x.split('-')[-1]))
-    
-    # if len(checkpoint_paths) == 0:
-    #     print('从头开始训练')
-    #     trainer.train()
-    # else:
-    #     checkpoint_path = checkpoint_paths[-1]
-    #     if len(checkpoint_paths) >= 2:
-    #         shutil.rmtree(checkpoint_paths[-2])
-
-    #     print(f'从{checkpoint_path}开始训练...')
-    #     steps = int(checkpoint_path.split('-')[-1])
-        
-    #     training_args.num_train_epochs = steps // 4 + 1 
-    #     trainer.train(os.path.join(model_dir, checkpoint_path))
-
-    # trainer.save_model(os.path.join(model_dir, 'merge'))
-    # trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))
+    trainer.save_model(os.path.join(model_dir, 'merge'))
+    trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))

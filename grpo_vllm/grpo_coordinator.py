@@ -14,7 +14,7 @@ from .grpo_reward_fn import group_reward_fn
 from .utils import apply_lora, ThinkCountLogitsProcessor
 
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-model_dir = os.path.join(current_dir, "autodl-tmp/model")
+model_dir = os.path.join(current_dir, "model")
 # model_dir = '/root/shared-storage/DeepSeek-R1-Distill-Qwen-14B'
 log_dir = os.path.join(current_dir, "log")
 buffer_file = os.path.join(current_dir, "data", "buffer.json")
@@ -23,7 +23,8 @@ test_data_file = os.path.join(current_dir, "data", "test.csv")
 system_setting_file = os.path.join(current_dir, "grpo_vllm/system_setting.txt")
 MAX_MODEL_LEN = 2048
 MAX_NUM_SEQ = 32
-INT_NUM = 128
+INT_NUM = 1024
+REP_NUM = 1
 
 random.seed((time.time() // 10) % 124291)
 
@@ -115,8 +116,8 @@ class TrainingSamplingCoordinator:
                                 {'role': 'user', 'content': f'Question:{i[-2]["content"]}\n\nAnswer:{i[-1]["content"]}'}]
                                 for i in completed_batch
                                 ]
-        
-        score_batch = self._generate_batch(batch_score_prompts)
+        score_batch = batch_score_prompts
+        # score_batch = self._generate_batch(batch_score_prompts)
 
 
         cur_msgs = []
@@ -135,19 +136,23 @@ class TrainingSamplingCoordinator:
 
             rewards = np.array(rewards)
 
+            # # rewards 差距太小没必要训练
             # if rewards.std() < 0.05:
             #     continue
-                
-            advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4)
+
+            advantages = rewards - rewards.mean()
+            # advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4)
 
             # 保存到当前批次
             for msg, advantage,reward in zip(completed_batch[j:j+sample_num], advantages, rewards):
-                cur_msgs.append({
-                    "completion": msg,
-                    "advantage": advantage.item(),
-                    "reward": reward.item(),
-                    "label": buffer_labels[j // sample_num],
-                })
+                if advantage > 0.2:
+                    for _ in range(REP_NUM):
+                        cur_msgs.append({
+                            "completion": msg,
+                            "advantage": advantage.item(),
+                            "reward": reward.item(),
+                            "label": buffer_labels[j // sample_num],
+                        })
 
         return cur_msgs
 
@@ -165,7 +170,7 @@ class TrainingSamplingCoordinator:
         
         # for i, row in enumerate(data):
         i = 0
-        while len(cur_msgs) < INT_NUM:
+        while len(cur_msgs) < INT_NUM * REP_NUM:
             
             row = self.data[(self.cur_data_idx + i) % data_size]
             
@@ -189,7 +194,7 @@ class TrainingSamplingCoordinator:
             i += 1
 
         self.cur_data_idx += i
-        self._write_buffer(cur_msgs)
+        self._write_buffer(cur_msgs[:INT_NUM * REP_NUM])
 
         print('结束采样下标：', self.cur_data_idx)
 
@@ -200,6 +205,7 @@ class TrainingSamplingCoordinator:
             min_p=0.01,
             max_tokens=MAX_MODEL_LEN,
             skip_special_tokens=True,
+            # logprobs=1,
         )
 
         # 将提示转换为模型输入格式
@@ -228,6 +234,8 @@ class TrainingSamplingCoordinator:
         if len(data) == 0:
             print('没有样本写入到缓冲区')
             return
+        
+        random.shuffle(data) # 打乱数据
         
         print(f'平均正确率：{sum(self.acc_ave) / len(self.acc_ave)}，多数投票正确率：{sum(self.acc_major) / len(self.acc_major)}，平均奖励：{sum(self.reward) / len(self.reward)}')
         self.acc_ave.clear()
@@ -306,4 +314,3 @@ class TrainingSamplingCoordinator:
         self._load_model() # merge : base + lora
         # 4. 测试模型
         self.test_model()
-

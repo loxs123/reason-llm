@@ -3,7 +3,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/loxs123/grpo-vllm?style=social)](https://github.com/loxs123/grpo-vllm)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A cutting-edge framework for efficient GRPO algorithm implementation with VLLM acceleration, enabling large language model fine-tuning on single 80GB GPU.
+A cutting-edge framework for efficient GRPO algorithm implementation with VLLM acceleration, enabling large language model fine-tuning(7B full finetune+GRPO) on single 80GB GPU.
 
 ## 🌟 Key Features
 
@@ -18,6 +18,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 - VLLM-powered sampling acceleration
 
 **🧩 Production-Ready Design**
+
 - Simple directory structure
 - DeepSpeed Zero-3 integration
 - Seamless HuggingFace ecosystem compatibility
@@ -26,15 +27,15 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 
 | Challenge                  | Conventional Solutions | Our Approach               |
 |----------------------------|------------------------|----------------------------|
-| High VRAM Requirements     | Multi-GPU clusters(other framework)     | Single 80GB GPU support    |
+| High VRAM Requirements         | Dual-model loading(vllm && train) | Single GPU support        |
 | Slow Sampling Speed        | Transformers processing   | VLLM GPU acceleration      |
 | High Min Batch Size Per Device  | group size   | 1   |
-| Memory Inefficiency        | Dual-model loading(other framework)     | Single-model architecture  |
+| Memory Inefficiency        | Dual-model loading(vllm && train) | Single-model architecture  |
 
 ## 🛠️ Getting Started
 
 ### Prerequisites
-- NVIDIA GPU with ≥80GB VRAM (e.g., A100)
+- NVIDIA GPU
 - CUDA 11.8+
 - Python 3.9+
 
@@ -76,18 +77,11 @@ python scripts/train.py
 ### Tips
 
 1. The larger the Lora rank, the better(≥128); a small Lora rank may lead to poor convergence.
-
 2. The larger the batch size, the better.
-
-3. The smaller INI_NUM, the better(1024 is too big).
 
 ## 📊 Experimental Results (Pending)
 
-| Model                | Accuracy | Epochs | Cost | Hardware      |
-|----------------------|----------|--------|------|---------------|
-| BaseModel            | TBD      | -      | -    | 1x A100-80GB  |
-| r1 Distill + SFT     | TBD      | 2      | TBD  | 1x A100-80GB  |
-| GRPO-VLLM (Ours)     | TBD      | 2      | TBD  | 1x A100-80GB  |
+
 
 *Testing on [AIME 2024 Dataset](https://huggingface.co/datasets/Maxwell-Jia/AIME_2024)*
 
