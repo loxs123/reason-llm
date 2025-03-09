@@ -21,8 +21,14 @@ from collections import defaultdict
 from typing import Any, Callable, Optional, Union
 
 import torch
-import torch.utils.data
+import torch.utils.data as th_data
+import json
+import time
+import random
 import transformers
+from transformers import TrainingArguments
+from dataclasses import dataclass, field
+from typing import Optional
 from datasets import Dataset, IterableDataset
 from packaging import version
 from transformers import (
@@ -41,17 +47,66 @@ from transformers.utils import is_peft_available
 from trl.models import create_reference_model, prepare_deepspeed
 from trl.data_utils import maybe_apply_chat_template
 
+
 from peft import LoraConfig, PeftModel
 
 from grpo_vllm.utils import prepare_deepspeed,create_prefix_mask,create_suffix_mask
-from grpo_vllm.grpo_config import GRPOConfig
-from grpo_vllm.grpo_dataset import GRPODataset
 
-current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from grpo_vllm.grpo_config import *
 
-model_dir = os.path.join(current_dir, "model")
-log_dir = os.path.join(current_dir, "log")
-buffer_file = os.path.join(current_dir, "data", "buffer.json")
+class GRPODataset(th_data.Dataset):
+    def __init__(self, filename):
+        super(GRPODataset, self).__init__()
+        with open(filename) as f:
+            data = json.load(f)
+        self.data = data
+    
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        item = self.data[index]
+        return item
+
+@dataclass
+class GRPOConfig(TrainingArguments):
+    # Parameters that control the model and reference model
+    model_init_kwargs: Optional[dict] = field(
+        default=None,
+        metadata={
+            "help": "Keyword arguments for `transformers.AutoModelForCausalLM.from_pretrained`, used when the `model` "
+            "argument of the `GRPOTrainer` is provided as a string."
+        },
+    )
+
+    # Parameters that control the data preprocessing
+    # The default value remove_unused_columns is overwritten from the parent class, because in GRPO we usually rely on
+    # additional columns to compute the reward
+    remove_unused_columns: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Whether to only keep the column 'prompt' in the dataset. If you use a custom reward function "
+            "that requires any column other than 'prompts' and 'completions', you should keep this to `False`."
+        },
+    )
+
+    # Parameters that control the training
+    learning_rate: float = field(
+        default=3e-6,
+        metadata={
+            "help": "Initial learning rate for `AdamW` optimizer. The default value replaces that of "
+            "`transformers.TrainingArguments`."
+        },
+    )
+    beta: float = field(
+        default=0.0,
+        metadata={"help": "KL coefficient."},
+    )
+
+    epsilon: float = field(
+        default=0.2,
+        metadata={"help": "KL coefficient."},
+    )
 
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
@@ -65,46 +120,6 @@ RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
 
 
 class GRPOTrainer(Trainer):
-    """
-    Trainer for the Group Relative Policy Optimization (GRPO) method. This algorithm was initially proposed in the
-    paper [DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models](https://huggingface.co/papers/2402.03300).
-
-    Args:
-        model (`Union[str, PreTrainedModel]`):
-            Model to be trained. Can be either:
-
-            - A string, being the *model id* of a pretrained model hosted inside a model repo on huggingface.co, or
-              a path to a *directory* containing model weights saved using
-              [`~transformers.PreTrainedModel.save_pretrained`], e.g., `'./my_model_directory/'`. The model is
-              loaded using [`~transformers.AutoModelForCausalLM.from_pretrained`] with the keywork arguments
-              in `args.model_init_kwargs`.
-            - A [`~transformers.PreTrainedModel`] object. Only causal language models are supported.
-        args ([`GRPOConfig`], *optional*, defaults to `None`):
-            Configuration for this trainer. If `None`, a default configuration is used.
-        train_dataset ([`~datasets.Dataset`] or [`~datasets.IterableDataset`]):
-            Dataset to use for training. It must include a column `"prompt"`. Any additional columns in the dataset is
-            ignored. The format of the samples can be either:
-
-            - [Standard](dataset_formats#standard): Each sample contains plain text.
-            - [Conversational](dataset_formats#conversational): Each sample contains structured messages (e.g., role
-              and content).
-        eval_dataset ([`~datasets.Dataset`], [`~datasets.IterableDataset`] or `dict[str, Union[Dataset, IterableDataset]]`):
-            Dataset to use for evaluation. It must meet the same requirements as `train_dataset`.
-        processing_class ([`~transformers.PreTrainedTokenizerBase`], *optional*, defaults to `None`):
-            Processing class used to process the data. The padding side must be set to "left". If `None`, the
-            processing class is loaded from the model's name with [`~transformers.AutoTokenizer.from_pretrained`].
-        callbacks (list of [`~transformers.TrainerCallback`], *optional*, defaults to `None`):
-            List of callbacks to customize the training loop. Will add those to the list of default callbacks
-            detailed in [here](https://huggingface.co/docs/transformers/main_classes/callback).
-
-            If you want to remove one of the default callbacks used, use the [`~transformers.Trainer.remove_callback`]
-            method.
-        optimizers (`tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]`, *optional*, defaults to `(None, None)`):
-            A tuple containing the optimizer and the scheduler to use. Will default to an instance of [`AdamW`] on your
-            model and a scheduler given by [`get_linear_schedule_with_warmup`] controlled by `args`.
-        peft_config ([`~peft.PeftConfig`], *optional*, defaults to `None`):
-            PEFT configuration used to wrap the model. If `None`, the model is not wrapped.
-    """
 
     _tag_names = ["trl", "grpo"]
 
@@ -156,7 +171,10 @@ class GRPOTrainer(Trainer):
                 )
 
         # Reference model
-        if is_deepspeed_zero3_enabled():
+        if args.beta == 0.0:
+            # If beta is 0.0, the reference model is not needed
+            self.ref_model = None
+        elif is_deepspeed_zero3_enabled():
             self.ref_model = AutoModelForCausalLM.from_pretrained(model_dir, **model_init_kwargs)
         elif peft_config is None:
             self.ref_model = AutoModelForCausalLM.from_pretrained(model_dir, **model_init_kwargs)
@@ -167,6 +185,14 @@ class GRPOTrainer(Trainer):
             # If PEFT is used, the reference model is not needed since the adapter can be disabled
             # to revert to the initial model.
             self.ref_model = None
+        
+        if is_deepspeed_zero3_enabled():
+            self.ref_model2 = AutoModelForCausalLM.from_pretrained(model_id)
+        else:
+            self.ref_model2 = AutoModelForCausalLM.from_pretrained(model_id)
+            for param in self.ref_model2.parameters():
+                param.requires_grad = False
+            self.ref_model2.eval()
 
         # Processing class
         if processing_class is None:
@@ -179,13 +205,8 @@ class GRPOTrainer(Trainer):
             return features
 
         self.beta = args.beta
+        self.epsilon = args.epsilon
 
-        # The trainer estimates the number of FLOPs (floating-point operations) using the number of elements in the
-        # input tensor associated with the key "input_ids". However, in GRPO, the sampled data does not include the
-        # "input_ids" key. Instead, the available keys is "prompt". As a result, the trainer issues the warning:
-        # "Could not estimate the number of tokens of the input, floating-point operations will not be computed." To
-        # suppress this warning, we set the "estimate_tokens" key in the model's "warnings_issued" dictionary to True.
-        # This acts as a flag to indicate that the warning has already been issued.
         model.warnings_issued["estimate_tokens"] = True
 
         # Initialize the metrics
@@ -216,6 +237,12 @@ class GRPOTrainer(Trainer):
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
+        if self.is_deepspeed_enabled:
+            self.ref_model2 = prepare_deepspeed(self.ref_model2, self.accelerator)
+        else:
+            self.ref_model2 = self.accelerator.prepare_model(self.ref_model2, evaluation_mode=True)
+            
+
     def _set_signature_columns_if_needed(self):
         # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
         # By default, this method sets `self._signature_columns` to the model's expected inputs.
@@ -223,11 +250,6 @@ class GRPOTrainer(Trainer):
         # Instead, we set them to the columns expected by the `training_step` method, hence the override.
         if self._signature_columns is None:
             self._signature_columns = ["prompt"]
-
-    # # Trainer "prepares" the inputs before calling `compute_loss`. It converts to tensor and move to device.
-    # # Since we preprocess the data in `compute_loss`, we need to override this method to skip this step.
-    # def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
-    #     return inputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """inputs = [
@@ -272,35 +294,41 @@ class GRPOTrainer(Trainer):
             return torch.stack(per_token_logps)
 
         per_token_logps = get_per_token_logps(model, prompt_completion_ids)
-        # # Get rid of the prompt (-1 because of the shift done in get_per_token_logps)
-        # per_token_logps = per_token_logps[:, prompt_length - 1 :]
-
-        # [2 - last] logps
         with torch.inference_mode():
-            if self.ref_model is not None:
-                ref_per_token_logps = get_per_token_logps(self.ref_model, prompt_completion_ids)
-            else:
-                with self.accelerator.unwrap_model(model).disable_adapter():
-                    ref_per_token_logps = get_per_token_logps(model, prompt_completion_ids)
-        # ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1 :]
-
-        # Compute the KL divergence between the model and the reference model
-        per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+            old_per_token_logps = get_per_token_logps(self.ref_model2, prompt_completion_ids)
 
         advantages = [example['advantage'] for example in inputs]
         advantages = torch.tensor(advantages, dtype=torch.float32, device=device) # batch_size
 
         # x - x.detach() allows for preserving gradients from x
-        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.detach().unsqueeze(1)
-        per_token_loss = -(per_token_loss - self.beta * per_token_kl)
-        
+        coef_1 = torch.exp(per_token_logps - old_per_token_logps)
+        coef_2 = torch.clamp(coef_1, 1 - self.epsilon, 1 + self.epsilon)
+        per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+        per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        if self.beta != 0.0:
+            # [2 - last] logps
+            with torch.inference_mode():
+                if self.ref_model is not None:
+                    ref_per_token_logps = get_per_token_logps(self.ref_model, prompt_completion_ids)
+                else:
+                    with self.accelerator.unwrap_model(model).disable_adapter():
+                        ref_per_token_logps = get_per_token_logps(model, prompt_completion_ids)
+            # Compute the KL divergence between the model and the reference model
+            per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+            per_token_loss = per_token_loss + self.beta * per_token_kl
+
         loss = ((per_token_loss * mask).sum(dim=1) / mask.sum(dim=1)).mean()
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)
 
-        mean_kl = ((per_token_kl * mask).sum(dim=1) / (mask.sum(dim=1) + 1e-4)).mean()
-        self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+        if self.beta != 0.0:
+            mean_kl = ((per_token_kl * mask).sum(dim=1) / (mask.sum(dim=1) + 1e-4)).mean()
+            self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+        is_clipped = (per_token_loss1 < per_token_loss2).float()
+        clip_ratio = (is_clipped * mask).sum() / mask.sum()
+        self._metrics["clip_ratio"].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
 
         return loss
     
@@ -315,16 +343,9 @@ class GRPOTrainer(Trainer):
 
 if __name__ == '__main__':
 
-    sample_num = 1024
-    repeat_num = 1
+    totol = INT_NUM * REP_NUM # 每次采样1024个，每个样本重复3次
 
-    totol = sample_num * repeat_num # 每次采样1024个，每个样本重复3次
-    num_gpu = 1
-
-    per_device_train_batch_size = 4
-    gradient_accumulation_steps = 16
-
-    epoch_steps = totol / per_device_train_batch_size / gradient_accumulation_steps / num_gpu
+    epoch_steps = totol / per_device_train_batch_size / gradient_accumulation_steps / GPU_NUM
 
     # 加载数据集
     train_dataset = GRPODataset(buffer_file)

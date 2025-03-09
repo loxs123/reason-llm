@@ -10,38 +10,13 @@ import random
 import time
 import re
 
-from .grpo_reward_fn import group_reward_fn
-from .utils import apply_lora, ThinkCountLogitsProcessor
-
-current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-model_dir = os.path.join(current_dir, "model")
-# model_dir = '/root/shared-storage/DeepSeek-R1-Distill-Qwen-14B'
-log_dir = os.path.join(current_dir, "log")
-buffer_file = os.path.join(current_dir, "data", "buffer.json")
-data_file = os.path.join(current_dir, "data", "train.csv")
-test_data_file = os.path.join(current_dir, "data", "test.csv")
-system_setting_file = os.path.join(current_dir, "grpo_vllm/system_setting.txt")
-MAX_MODEL_LEN = 2048
-MAX_NUM_SEQ = 32
-INT_NUM = 1024
-REP_NUM = 1
-
-random.seed((time.time() // 10) % 124291)
-
-GPU_NUM = len(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
+from grpo_vllm.grpo_reward_fn import group_reward_fn
+from grpo_vllm.utils import apply_lora, ThinkCountLogitsProcessor
+from grpo_vllm.grpo_config import *
 
 with open(system_setting_file) as f:
     d = f.read()
     system_settings = re.findall(r'```text\n(.*?)\n```', d, re.S)
-
-score_prompt = """Assume you are a careful math expert. Please rate the answer based on the following evaluation criteria, and provide the final score in \\boxed{} out of 10 points:
-
-1. Is each step of the reasoning coherent and logical? (3 points)
-
-2. Is the reasoning process clear? (3 points)
-
-3. What is the likelihood of the correctness of the final result? (4 points)"""
-
 
 assert MAX_NUM_SEQ % len(system_settings) == 0
 
@@ -109,16 +84,7 @@ class TrainingSamplingCoordinator:
         # INT_NUM
         batch_prompts = [msg for msgs in buffer_msgs for msg in msgs]
         sample_num = len(buffer_msgs[0])
-        
         completed_batch = self._generate_batch(batch_prompts)
-
-        batch_score_prompts = [[{'role': 'system', 'content': score_prompt}, 
-                                {'role': 'user', 'content': f'Question:{i[-2]["content"]}\n\nAnswer:{i[-1]["content"]}'}]
-                                for i in completed_batch
-                                ]
-        score_batch = batch_score_prompts
-        # score_batch = self._generate_batch(batch_score_prompts)
-
 
         cur_msgs = []
         for j in range(0, len(completed_batch), sample_num):
@@ -128,7 +94,7 @@ class TrainingSamplingCoordinator:
                 prompts=None,
                 completions=completed_batch[j : j+sample_num],
                 label=buffer_labels[j // sample_num],
-                scores = batch_score_prompts[j : j+sample_num]
+                scores = [None] * sample_num
             )
             self.reward.extend(rewards)
             self.acc_ave.append(acc_rate)
@@ -145,7 +111,7 @@ class TrainingSamplingCoordinator:
 
             # 保存到当前批次
             for msg, advantage,reward in zip(completed_batch[j:j+sample_num], advantages, rewards):
-                if advantage > 0.2:
+                if advantage > 0.0:
                     for _ in range(REP_NUM):
                         cur_msgs.append({
                             "completion": msg,
@@ -305,7 +271,6 @@ class TrainingSamplingCoordinator:
 
     def run_cycle(self):
         """执行完整的训练-采样周期"""
-        # self._load_model() 0 base
         # 1. 采样阶段
         self.generate_samples()
         # 2. 训练阶段

@@ -5,7 +5,6 @@ import os
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 from transformers import LogitsProcessor
-from awq import AutoAWQForCausalLM
 
 if is_deepspeed_available():
     import deepspeed
@@ -69,10 +68,11 @@ def create_suffix_mask(input_ids, eos_id, ):
     
     mask = 1.0 - mask
     return mask
+import time
 
 def apply_lora(model_dir):
+
     model_name_or_path = model_dir
-    
     output_path = os.path.join(model_dir, 'merge')
     merge_model_path = os.path.join(model_dir, 'merge')
     lora_path = os.path.join(model_dir, 'lora')
@@ -91,32 +91,13 @@ def apply_lora(model_dir):
         base,
         lora_path,
         torch_dtype=torch.float16,
-    )
- 
+    ).to('cuda:0')
+
     print("Applying the LoRA")
     model = lora_model.merge_and_unload()
 
     print(f"Saving the target model to {output_path}")
     model.save_pretrained(output_path)
-
-    # quant_config = {
-    #     "zero_point": True,   # 启用零点量化
-    #     "q_group_size": 128,  # 权重分组大小
-    #     "w_bit": 4,           # 4-bit 量化
-    #     "version": "GEMM"     # 使用 GEMM 内核（或选择 "GEMV"）
-    # }
-
-    # # 使用 AutoAWQ 量化器
-    # quant_model = AutoAWQForCausalLM.from_pretrained(
-    #     output_path,
-    #     quant_config=quant_config,
-    #     device_map="auto"  # 自动分配 GPU/CPU
-    # )
-
-    # # 3. 保存量化模型和分词器
-    # print(f"Saving AWQ quantized model to {output_path}")
-    # quant_model.save_quantized(merge_model_path)
-
     base_tokenizer.save_pretrained(merge_model_path)
 
     return True
@@ -146,3 +127,7 @@ class ThinkCountLogitsProcessor(LogitsProcessor):
             scores[self.eos_id] += 1e5
 
         return scores
+
+
+if __name__ == '__main__':
+    apply_lora('/home/user/model')

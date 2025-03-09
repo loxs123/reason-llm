@@ -2,19 +2,18 @@
 import re
 from collections import Counter
 
-
 def extract_boxed_text(text):
     matches = re.findall(r'oxed{(.*?)}', text)
     if not matches:
         return -1
     content = matches[-1]
     if content.isdigit():
-        num = int(content)
-    else:
-        nums = re.findall(r'\d+', content)
-        if not nums:
+        try:
+            num = int(content)
+        except:
             return -1
-        num = int(nums[-1])
+    else:
+        return -1
     return num
 
 def format_reward_fn(msgs):
@@ -80,9 +79,9 @@ def _reward_fn(msgs, score_msgs, label):
     r1, p = correct_reward_fn(msgs, label) # 回答正确
     # r2 = format_reward_fn(msgs) # 格式
     # r3 = length_reward_fn(msgs) # 格式
-    r4 = llm_reward_fn(score_msgs)
+    # r4 = llm_reward_fn(score_msgs)
 
-    return (r1 + r4) / 2, p
+    return r1, p
 
 def group_reward_fn(prompts=None, completions=None, label=None, scores = None):
     labelset = set()
