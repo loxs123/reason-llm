@@ -21,13 +21,12 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 - DeepSpeed Zero-2/3 integration
 - Seamless HuggingFace ecosystem compatibility
 
-## 🎯 Why ReasonLLM?
 
 | Challenge                  | Conventional Solutions | Our Approach               |
 |----------------------------|------------------------|----------------------------|
 | Slow Sampling Speed        | Transformers processing   | VLLM GPU acceleration      |
 | High Min Batch Size Per Device  | group size   | 1   |
-| Memory Inefficiency/High VRAM Requirements | Dual-model loading(vllm/train) | Single-model architecture  |
+| Memory Inefficiency/High VRAM Requirements | Dual-model loading(vllm/train) | Single-model loading  |
 
 ## 🛠️ Getting Started
 
@@ -86,14 +85,6 @@ nohup python -u scripts/train.py &
 
 ![实验结果](images/metrics_analysis.png)
 [训练日志](log/log.out)
-
-## 🧠 Technical Foundation
-
-### Core Components
-1. **GRPO Algorithm** - Group Relative Policy Optimization
-2. **VLLM Acceleration** - Paged Attention implementation
-3. **Dynamic Batching** - Flexible sequence processing
-4. **Memory Optimization** - Gradient checkpointing + DeepSpeed
 
 
 ## 📚 References
