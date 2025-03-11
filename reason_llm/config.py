@@ -10,7 +10,7 @@ per_device_train_batch_size = 16 # 大一点的batch_size
 gradient_accumulation_steps = 16
 
 test_data_file = os.path.join(current_dir, "data", "test.csv")
-system_setting_file = os.path.join(current_dir, "grpo_vllm/system_setting.txt")
+system_setting_file = os.path.join(current_dir, "reason_llm/system_setting.txt")
 
 MAX_MODEL_LEN = 2048
 MAX_NUM_SEQ = 32

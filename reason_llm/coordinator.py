@@ -198,7 +198,7 @@ class TrainingSamplingCoordinator:
         with open(buffer_file, "w") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         print(f"已写入{len(data)}条样本到缓冲区")
-
+    
     def train_model(self):
         print("\n--- 开始训练阶段 ---")
         del self.llm

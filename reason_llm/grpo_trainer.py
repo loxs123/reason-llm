@@ -97,7 +97,7 @@ class GRPOConfig(TrainingArguments):
         },
     )
     beta: float = field(
-        default=0.0,
+        default=0.0, # > 0 may out of memory
         metadata={"help": "KL coefficient."},
     )
 
