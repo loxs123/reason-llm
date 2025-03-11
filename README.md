@@ -1,89 +1,91 @@
-# GRPO-VLLM: Efficient LLM Fine-Tuning with Optimized Resource Utilization 🚀
+# ReasonLLM: Efficient LLM RL Fine-Tuning with Optimized Resource Utilization 🚀
 
-[![GitHub Stars](https://img.shields.io/github/stars/loxs123/grpo-vllm?style=social)](https://github.com/loxs123/grpo-vllm)
+[![GitHub Stars](https://img.shields.io/github/stars/loxs123/grpo-vllm?style=social)](https://github.com/loxs123/reason-llm)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A cutting-edge framework for efficient GRPO algorithm implementation with VLLM acceleration, enabling large language model fine-tuning(7B full finetune+GRPO) on single 80GB GPU.
+A cutting-edge framework for efficient GRPO algorithm implementation with VLLM acceleration, enabling large language model fine-tuning with lower GPU memory usage.
 
 ## 🌟 Key Features
 
 **⚡ Ultra-Efficient Resource Usage**
 - Lower GPU memory consumption than other methods
 - Serialized sampling & training pipeline for optimal GPU utilization
-- Supports training with context lengths up to 8K tokens
-- Batch-agnostic answer processing
+- Dynamic-Batch processing
 - Supports Lora fine-tuning
 
 **🚀 Accelerated Performance**
 - VLLM-powered sampling acceleration
 
 **🧩 Production-Ready Design**
-
 - Simple directory structure
-- DeepSpeed Zero-3 integration
+- DeepSpeed Zero-2/3 integration
 - Seamless HuggingFace ecosystem compatibility
 
-## 🎯 Why GRPO-VLLM?
+## 🎯 Why Reason-LLM?
 
 | Challenge                  | Conventional Solutions | Our Approach               |
 |----------------------------|------------------------|----------------------------|
-| High VRAM Requirements         | Dual-model loading(vllm && train) | Single GPU support        |
 | Slow Sampling Speed        | Transformers processing   | VLLM GPU acceleration      |
 | High Min Batch Size Per Device  | group size   | 1   |
-| Memory Inefficiency        | Dual-model loading(vllm && train) | Single-model architecture  |
+| Memory Inefficiency/High VRAM Requirements | Dual-model loading(vllm/train) | Single-model architecture  |
 
 ## 🛠️ Getting Started
 
 ### Prerequisites
 - NVIDIA GPU
-- CUDA 11.8+
+- CUDA 12+
 - Python 3.9+
 
 ### Installation
 ```bash
 git clone https://github.com/loxs123/grpo-vllm.git
 cd grpo-vllm
-pip install -e .
+pip install -e . # If it fails, please install the required dependencies one by one.
 ```
 
 ### Project Structure
 ```bash
 ├── data
-│   ├── train.csv        # Training dataset
 │   ├── test.csv         # Test dataset
 │   └── buffer.json      # Auto-generated training buffer
 ├── model                # Model directory
-│   ├── config.json
+│   ├── config.json      # put your model here
 │   ├── model.safetensors
 │   └── tokenizer...
-└── grpo_vllm            # Core framework
-    ├── grpo_config.py   # Training configuration
-    ├── grpo_dataset.py  # Data processing
+└── reason_llm            # Core framework
+    ├── config.py         # Training configuration
+    ├── .py  # Data processing
     └── ...              # Implementation modules
 ```
 
-### Dataset Format (`train.csv`)
-| question                                   | answer |
-|-------------------------------------------|--------|
-| Mathematical problem in LaTeX...          | 60     |
-| Calculus optimization problem...          | 15     |
-| Algebraic equation challenge...           | 20     |
-
 ### Launch Training
 ```bash
-python scripts/train.py
+nohup python -u scripts/train.py &
 ```
 
-### Tips
+### Some experiences and tips.
 
-1. The larger the Lora rank, the better(≥128); a small Lora rank may lead to poor convergence.
+1. The larger the Lora rank, the better(≥128);
+
 2. The larger the batch size, the better.
 
-## 📊 Experimental Results (Pending)
+3. Removing samples with Advantage < 0 can lead to a better result.
 
+4. Removing samples where reward.std() is too small (<0.1).
 
+## 📊 Experimental Results
 
-*Testing on [AIME 2024 Dataset](https://huggingface.co/datasets/Maxwell-Jia/AIME_2024)*
+| Item            | detail                                         |
+|---------------|--------------------------------------------|
+| **Train Base Model** | [Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) |
+| **Train Type**  | full finetune                           |
+| **Train Hardware** | 1×A100(80G) (May 3×3090 also be OK?) |
+| **Train Time**  | 12h                                     |
+| **Train Dataset**  | [xiaodongguaAIGC/X-R1-7500](https://huggingface.co/datasets/xiaodongguaAIGC/X-R1-7500) |
+| **Test Dataset**  | [AIME 2024 Dataset](https://huggingface.co/datasets/Maxwell-Jia/AIME_2024) |
+
+![实验结果](images/metrics_analysis.png)
+[训练日志](log/log.out)
 
 ## 🧠 Technical Foundation
 
@@ -100,9 +102,6 @@ python scripts/train.py
 3. [TRL Library](https://github.com/huggingface/trl)
 4. [AIME Dataset](https://huggingface.co/datasets/di-zhang-fdu/AIME_1983_2024)
 
-## 🤝 Contribution Roadmap
-    - [ ] Complete initial benchmark results
-    - [ ] load checkpoint? or only model?
 ---
 
 *Empowering efficient LLM fine-tuning for everyone* 🤖

@@ -4,5 +4,6 @@ trl
 accelerate
 peft
 deepspeed
-autoawq
 modelscope
+tensorboardX
+math-verify==0.5.2

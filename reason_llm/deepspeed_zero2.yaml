@@ -1,0 +1,29 @@
+compute_environment: LOCAL_MACHINE
+debug: false
+deepspeed_config:
+  deepspeed_multinode_launcher: standard
+  zero3_init_flag: false
+  zero_stage: 2
+  offload_optimizer_device: cpu  # 将优化器状态卸载到CPU
+  offload_param_device: none     # 保持参数在GPU上
+  # 新增详细zero优化配置
+  zero_optimization:
+    stage: 2
+    offload_optimizer:
+      device: cpu
+      pin_memory: true          # 启用锁页内存加快传输
+    overlap_comm: true          # 通信与计算重叠
+    contiguous_gradients: true  # 连续梯度内存
+    allgather_bucket_size: 2e8  # 减小通信桶大小
+    reduce_bucket_size: 2e8
+  # 新增梯度检查点配置
+  activation_checkpointing: true
+  activation_checkpointing_config:
+    partition_activations: true
+    contiguous_checkpointing: true
+    checkpoint_in_cpu: true
+
+distributed_type: DEEPSPEED
+machine_rank: 0
+num_machines: 1
+num_processes: 1
