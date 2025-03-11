@@ -21,7 +21,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 - DeepSpeed Zero-2/3 integration
 - Seamless HuggingFace ecosystem compatibility
 
-## 🎯 Why Reason-LLM?
+## 🎯 Why ReasonLLM?
 
 | Challenge                  | Conventional Solutions | Our Approach               |
 |----------------------------|------------------------|----------------------------|
@@ -38,8 +38,8 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 
 ### Installation
 ```bash
-git clone https://github.com/loxs123/grpo-vllm.git
-cd grpo-vllm
+git clone https://github.com/loxs123/reason-llm.git
+cd reason-llm
 pip install -e . # If it fails, please install the required dependencies one by one.
 ```
 
@@ -54,7 +54,7 @@ pip install -e . # If it fails, please install the required dependencies one by 
 │   └── tokenizer...
 └── reason_llm            # Core framework
     ├── config.py         # Training configuration
-    ├── .py  # Data processing
+    ├── reward_fn.py      # Reward Functions
     └── ...              # Implementation modules
 ```
 
