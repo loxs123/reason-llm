@@ -85,7 +85,7 @@ nohup python -u scripts/train.py &
 
 ![实验结果](images/metrics_analysis.png)
 [训练日志](log/log.out)
-
+commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
 
 ## 📚 References
 1. [VLLM Official Implementation](https://github.com/vllm-project/vllm)
