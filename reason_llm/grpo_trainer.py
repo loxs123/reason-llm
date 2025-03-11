@@ -271,9 +271,8 @@ class GRPOTrainer(Trainer):
             prompts_text, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
         )['input_ids'] # 只训练前面的
 
-        # assistant_id = self.processing_class('<｜Assistant｜>', add_special_tokens=False)['input_ids'][0]
-        # pad_id = self.processing_class.eos_token_id
-        assistant_id = self.processing_class('assistant', add_special_tokens=False)['input_ids'][0]
+        # assistant_id = self.processing_class('<｜Assistant｜>', add_special_tokens=False)['input_ids'][0] # for deepseek
+        assistant_id = self.processing_class('assistant', add_special_tokens=False)['input_ids'][0] # for qwen 
         pad_id = self.processing_class.pad_token_id
         prefix_mask = create_prefix_mask(prompt_inputs, assistant_id)
         suffix_mask = create_suffix_mask(prompt_inputs, pad_id)

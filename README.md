@@ -92,7 +92,7 @@ nohup python -u scripts/train.py &
 2. [DeepSeek-R1 Model](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B)
 3. [TRL Library](https://github.com/huggingface/trl)
 4. [AIME Dataset](https://huggingface.co/datasets/di-zhang-fdu/AIME_1983_2024)
-
+5. [X-R1](https://github.com/dhcode-cpp/X-R1)
 ---
 
 *Empowering efficient LLM fine-tuning for everyone* 🤖
