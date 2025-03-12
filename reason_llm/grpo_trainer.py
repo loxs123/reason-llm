@@ -49,7 +49,7 @@ from trl.data_utils import maybe_apply_chat_template
 
 from peft import LoraConfig, PeftModel
 
-from reason_llm.utils import prepare_deepspeed,create_prefix_mask,create_suffix_mask
+from reason_llm.utils import *
 from reason_llm.config import *
 
 class GRPODataset(th_data.Dataset):
@@ -90,19 +90,19 @@ class GRPOConfig(TrainingArguments):
 
     # Parameters that control the training
     learning_rate: float = field(
-        default=3e-6,
+        default=LR,
         metadata={
             "help": "Initial learning rate for `AdamW` optimizer. The default value replaces that of "
             "`transformers.TrainingArguments`."
         },
     )
     beta: float = field(
-        default=0.0, # > 0 may out of memory
+        default=BETA, 
         metadata={"help": "KL coefficient."},
     )
 
     epsilon: float = field(
-        default=0.2,
+        default=EPSILON,
         metadata={"help": "KL coefficient."},
     )
 
@@ -168,42 +168,13 @@ class GRPOTrainer(Trainer):
                     "This argument can only be used when the `model` argument is a string."
                 )
 
-        # Reference model
-        if args.beta == 0.0:
-            # If beta is 0.0, the reference model is not needed
-            self.ref_model = None
-        elif is_deepspeed_zero3_enabled():
-            self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
-        elif peft_config is None:
-            self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
-            for param in self.ref_model.parameters():
-                param.requires_grad = False
-            self.ref_model.eval()
-        else:
-            # If PEFT is used, the reference model is not needed since the adapter can be disabled
-            # to revert to the initial model.
-            self.ref_model = None
-        
-
-        if os.path.exists(os.path.join(model_dir, 'merge')):
-            pre_model_id = os.path.join(model_dir, 'merge')
-        else:
-            pre_model_id = model_dir
-            
-        if is_deepspeed_zero3_enabled():
-            self.ref_model2 = AutoModelForCausalLM.from_pretrained(pre_model_id)
-        else:
-            self.ref_model2 = AutoModelForCausalLM.from_pretrained(pre_model_id)
-            for param in self.ref_model2.parameters():
-                param.requires_grad = False
-            self.ref_model2.eval()
 
         # Processing class
         if processing_class is None:
             processing_class = AutoTokenizer.from_pretrained(model.config._name_or_path, padding_side="left")
 
         if processing_class.pad_token_id is None:
-            processing_class.pad_token = processing_class.eos_token
+            processing_class.pad_token_id = processing_class.eos_token_id
         self.peft_config = peft_config
 
         # Data collator
@@ -237,16 +208,6 @@ class GRPOTrainer(Trainer):
         # Add tags to the model
         self.model.add_model_tags(self._tag_names)
 
-        if self.ref_model is not None:
-            if self.is_deepspeed_enabled:
-                self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
-            else:
-                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
-
-        if self.is_deepspeed_enabled:
-            self.ref_model2 = prepare_deepspeed(self.ref_model2, self.accelerator)
-        else:
-            self.ref_model2 = self.accelerator.prepare_model(self.ref_model2, evaluation_mode=True)
 
     def _set_signature_columns_if_needed(self):
         # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
@@ -255,6 +216,15 @@ class GRPOTrainer(Trainer):
         # Instead, we set them to the columns expected by the `training_step` method, hence the override.
         if self._signature_columns is None:
             self._signature_columns = ["prompt"]
+    
+    def _logp(self, logps, seq_len, device):
+        
+        for i in range(len(logps)):
+            if len(logps[i]) > seq_len:
+                logps[i] = logps[i][: seq_len]
+            else:
+                logps[i] = logps[i] + [0.0] * (seq_len - len(logps[i]))
+        return torch.tensor(logps, dtype=torch.float32, device=device)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """inputs = [
@@ -269,14 +239,16 @@ class GRPOTrainer(Trainer):
         prompts_text = [maybe_apply_chat_template({'messages': example['completion'] }, self.processing_class)["text"] for example in inputs]
         prompt_inputs = self.processing_class(
             prompts_text, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
-        )['input_ids'] # 只训练前面的
+        )['input_ids']
 
-        # assistant_id = self.processing_class('<｜Assistant｜>', add_special_tokens=False)['input_ids'][0] # for deepseek
-        assistant_id = self.processing_class('assistant', add_special_tokens=False)['input_ids'][0] # for qwen 
+        seq_len = prompt_inputs.size(1) - 1
+
+        assistant_id = self.processing_class(ASSISTANT_TOKEN, add_special_tokens=False)['input_ids'][0] # for deepseek
+
         pad_id = self.processing_class.pad_token_id
         prefix_mask = create_prefix_mask(prompt_inputs, assistant_id)
         suffix_mask = create_suffix_mask(prompt_inputs, pad_id)
-        
+
         mask = prefix_mask * suffix_mask
         
         prompt_completion_ids = super()._prepare_inputs(prompt_inputs)
@@ -284,22 +256,10 @@ class GRPOTrainer(Trainer):
         
         device = self.accelerator.device
 
-        # Get the per-token log probabilities for the completions for the model and the reference model
-        def get_per_token_logps(model, input_ids):
-            logits = model(input_ids).logits  # (B, L, V)
-            logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token pred
-            input_ids = input_ids[:, 1:]  # (B, L-1), exclude the first input ID since we don't have logits for it
-            # Compute the log probabilities for the input tokens. Use a loop to reduce memory peak.
-            per_token_logps = []
-            for logits_row, input_ids_row in zip(logits, input_ids):
-                log_probs = logits_row.log_softmax(dim=-1)
-                token_log_prob = torch.gather(log_probs, dim=1, index=input_ids_row.unsqueeze(1)).squeeze(1)
-                per_token_logps.append(token_log_prob)
-            return torch.stack(per_token_logps)
-
         per_token_logps = get_per_token_logps(model, prompt_completion_ids)
-        with torch.inference_mode():
-            old_per_token_logps = get_per_token_logps(self.ref_model2, prompt_completion_ids)
+
+        old_per_token_logps = [example['old_per_token_logps'] for example in inputs]
+        old_per_token_logps = self._logp(old_per_token_logps, seq_len, device)
 
         advantages = [example['advantage'] for example in inputs]
         advantages = torch.tensor(advantages, dtype=torch.float32, device=device) # batch_size
@@ -310,14 +270,11 @@ class GRPOTrainer(Trainer):
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
-        if self.beta != 0.0:
+        if self.beta > 0.0:
             # [2 - last] logps
-            with torch.inference_mode():
-                if self.ref_model is not None:
-                    ref_per_token_logps = get_per_token_logps(self.ref_model, prompt_completion_ids)
-                else:
-                    with self.accelerator.unwrap_model(model).disable_adapter():
-                        ref_per_token_logps = get_per_token_logps(model, prompt_completion_ids)
+            ref_per_token_logps = [example['ref_per_token_logps'] for example in inputs]
+            ref_per_token_logps = self._logp(ref_per_token_logps, seq_len, device)
+
             # Compute the KL divergence between the model and the reference model
             per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
             per_token_loss = per_token_loss + self.beta * per_token_kl

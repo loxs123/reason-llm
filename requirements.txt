@@ -7,3 +7,4 @@ deepspeed
 modelscope
 tensorboardX
 math-verify==0.5.2
+e2b-code-interpreter

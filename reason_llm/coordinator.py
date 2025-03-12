@@ -2,6 +2,7 @@ import os
 import json
 import csv
 import copy
+from tqdm import tqdm
 import gc
 import numpy as np
 import torch
@@ -10,16 +11,12 @@ import random
 import time
 import re
 from datasets import load_dataset
+from trl.data_utils import maybe_apply_chat_template
+from transformers import AutoModelForCausalLM
 
-from reason_llm.utils import apply_lora
+from reason_llm.utils import apply_lora, get_per_token_logps
 from reason_llm.config import *
 from reason_llm.reward_fn import *
-
-with open(system_setting_file) as f:
-    d = f.read()
-    system_settings = re.findall(r'```text\n(.*?)\n```', d, re.S)
-
-assert MAX_NUM_SEQ % len(system_settings) == 0
 
 def ave_length(msgs, tokenizer):
     l = 0
@@ -34,14 +31,16 @@ class TrainingSamplingCoordinator:
     def __init__(self):
         self.llm = None
         self.tokenizer = None
-        self.cur_data_idx = 0
+        self.train_idx = 0
         self.acc_ave = []
         self.reward = []
         self.acc_major = []
         self.length = []
 
-        self.data = load_dataset(DATASET)['train']
-        print('数据集总量：', len(self.data))
+        self.train_data = load_dataset(TRAIN_DATASET)['train']
+        self.test_data = load_dataset(TEST_DATASET)['train']
+        print('训练集数据集总量：', len(self.train_data))
+        print('测试集数据集总量：', len(self.test_data))
         self.load_model()
         
     def load_model(self):
@@ -102,71 +101,81 @@ class TrainingSamplingCoordinator:
     def _to_buffer(self, buffer_msgs, buffer_sols):
         
         # INT_NUM
-        batch_prompts = [msg for msgs in buffer_msgs for msg in msgs]
-        sample_num = len(buffer_msgs[0])
-        completed_batch = self._generate_batch(batch_prompts)
+        msgs = [msg for _msgs in buffer_msgs for msg in _msgs]
+        msgs = self._generate(msgs)
 
-        cur_msgs = []
-        for j in range(0, len(completed_batch), sample_num):
+        buffers = []
+        for j in range(0, len(msgs), NUM_GENERATIONS):
 
             # 处理结果
             rewards, acc_rate, major = self._group_reward_fn(
-                completions=completed_batch[j:j+sample_num],
-                solution=buffer_sols[j//sample_num],
+                completions=msgs[j:j+NUM_GENERATIONS],
+                solution=buffer_sols[j//NUM_GENERATIONS],
             )
             self.reward.extend(rewards)
             self.acc_ave.append(acc_rate)
             self.acc_major.append(major)
-            self.length.append(ave_length(completed_batch[j:j+sample_num], self.tokenizer))
+            self.length.append(ave_length(msgs[j:j+NUM_GENERATIONS], self.tokenizer))
             rewards = np.array(rewards)
             if rewards.std() < 0.1: # 技巧1 
                 continue
             advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-4) # grpo
 
-            for msg, advantage,reward in zip(completed_batch[j:j+sample_num], advantages, rewards):
+            for msg, advantage,reward in zip(msgs[j:j+NUM_GENERATIONS], advantages, rewards):
                 if advantage > 0.0: # 技巧2 只训练正样本
-                    for _ in range(REP_NUM):
-                        cur_msgs.append({
-                            "completion": msg,
-                            "advantage": advantage.item(),
-                            "reward": reward.item(),
-                            "label": buffer_sols[j // sample_num],
-                        })
+                    buffers.append({
+                        "completion": msg,
+                        "advantage": advantage.item(),
+                        "reward": reward.item(),
+                        "label": buffer_sols[j // NUM_GENERATIONS],
+                    })
 
-        return cur_msgs
+        return buffers
 
     def generate_samples(self):
         print("\n--- 开始采样阶段 ---")
 
-        print('开始采样下标：', self.cur_data_idx)
-        data_size = len(self.data)
+        print('开始采样下标：', self.train_idx)
 
-        buffer_msgs = []
-        buffer_sols = []
-        cur_msgs = []
+        self.buffers = []
+
+        current_msgs = []
+        current_sols = []
         
-        i = 0
-        while len(cur_msgs) < INT_NUM * REP_NUM:
-            row = self.data[(self.cur_data_idx + i) % data_size]
-            # 为每个问题生成SAMPLE_NUM个样本
-            batch_prompts = [
-                [{"role":"system", "content": sys_set}, 
-                {"role": "user", "content": row['problem']}]
-                for sys_set in system_settings
-            ]
-            buffer_msgs.append(batch_prompts)
-            buffer_sols.append(row['solution'])
-            if (i + 1) % (MAX_NUM_SEQ // len(batch_prompts)) == 0:
-                cur_msgs += self._to_buffer(buffer_msgs, buffer_sols)
-                buffer_msgs.clear()
-                buffer_sols.clear()
-                self.log_info(cur_msgs)
-            i += 1
-        self.cur_data_idx += i
-        self._write_buffer(cur_msgs[:INT_NUM * REP_NUM])
-        print('结束采样下标：', self.cur_data_idx)
+        int_num_sample = MAX_NUM_SEQ // len(system_settings)
+        while len(self.buffers) < INT_NUM:
+            _row = self.train_data[self.train_idx % len(self.train_data)]
+            row = {k.lower(): v for k,v in _row.items()}
 
-    def _generate_batch(self, prompts):
+            if 'problem' in row:
+                msgs = [
+                    [{"role":"system", "content": sys_set}, 
+                    {"role": "user", "content": row['problem']}]
+                    for sys_set in system_settings
+                ]
+            else:
+                msgs = [
+                    [{"role":"system", "content": sys_set}, 
+                    {"role": "user", "content": row['question']}]
+                    for sys_set in system_settings
+                ]
+            current_msgs.append(msgs)
+
+            if 'solution' in row:
+                current_sols.append(row['solution'])
+            else:
+                current_sols.append('\\boxed{' + str(row['answer']) + '}')
+
+            if (self.train_idx + 1) % int_num_sample == 0:
+                self.buffers += self._to_buffer(current_msgs, current_sols)
+                current_msgs.clear()
+                current_sols.clear()
+                self.log_info(self.buffers)
+            self.train_idx += 1
+        self.buffers = self.buffers[:INT_NUM]
+        print('结束采样下标：', self.train_idx)
+
+    def _generate(self, prompts):
         sampling_params = SamplingParams(
             temperature=1.0,
             min_p=0.01,
@@ -189,21 +198,23 @@ class TrainingSamplingCoordinator:
             for prompt, output in zip(prompts, outputs)
         ]
 
-    def _write_buffer(self, data):
+    def save_samples(self,):
+        data = self.buffers * REP_NUM
         random.shuffle(data) # 打乱数据
-        
         self.log_info()
         self.clear_info()
-
         with open(buffer_file, "w") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        self.buffers.clear()
         print(f"已写入{len(data)}条样本到缓冲区")
     
-    def train_model(self):
-        print("\n--- 开始训练阶段 ---")
+    def del_model(self):
         del self.llm
         gc.collect()
         torch.cuda.empty_cache()
+
+    def train_model(self):
+        print("\n--- 开始训练阶段 ---")
         if GPU_NUM == 1:
             # for single gpu use deepspeed_zero2
             os.system(f'CUDA_VISIBLE_DEVICES={GPU} accelerate launch --config_file "{current_dir}/reason_llm/deepspeed_zero2.yaml" "{current_dir}/reason_llm/grpo_trainer.py"')
@@ -216,24 +227,31 @@ class TrainingSamplingCoordinator:
         buffer_msgs = []
         buffer_sols = []
 
-        data = []
-        with open(test_data_file, "r") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                data.append(row)
         self.clear_info()
-        for i in range(len(data)):
-            row = data[i]
-            # 为每个问题生成SAMPLE_NUM个样本
-            batch_prompts = [
-                [{"role":"system", "content": sys_set},
-                {"role": "user", "content": row['question']}]
-                for sys_set in system_settings
-            ]
+        int_num_sample = MAX_NUM_SEQ // len(system_settings)
+        for i in range(len(self.test_data)):
+            _row = self.test_data[i]
+            row = {k.lower(): v for k, v in _row.items()}
+            if 'problem' in row:
+                batch_prompts = [
+                    [{"role":"system", "content": sys_set}, 
+                    {"role": "user", "content": row['problem']}]
+                    for sys_set in system_settings
+                ]
+            else:
+                batch_prompts = [
+                    [{"role":"system", "content": sys_set}, 
+                    {"role": "user", "content": row['question']}]
+                    for sys_set in system_settings
+                ]
             buffer_msgs.append(batch_prompts)
-            buffer_sols.append('\\boxed{' + row['answer'] + '}')
 
-            if (i + 1) % (MAX_NUM_SEQ // len(batch_prompts)) == 0:
+            if 'solution' in row:
+                buffer_sols.append(row['solution'])
+            else:
+                buffer_sols.append('\\boxed{' + str(row['answer']) + '}')
+
+            if (i + 1) % int_num_sample == 0:
                 self._to_buffer(buffer_msgs, buffer_sols)
                 buffer_msgs.clear()
                 buffer_sols.clear()
@@ -244,9 +262,43 @@ class TrainingSamplingCoordinator:
 
         self.log_info()
         self.clear_info()
+    
+    def compute_logp(self):
+        ref_model_path = model_dir
+        old_model_path = os.path.join(model_dir, "merge")
+        if not os.path.exists(old_model_path):
+            old_model_path = model_dir
+        batch_size = 4
+        
+        if BETA > 0.0:
+            model_dict = {"old_per_token_logps": old_model_path, "ref_per_token_logps": ref_model_path}
+        else:
+            model_dict = {"old_per_token_logps": old_model_path}
+
+        for key, model_id in model_dict.items():
+            model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float16).to('cuda:0')
+            model.eval()
+            for i in tqdm(range(0, len(self.buffers), batch_size)):
+                prompts_text = [maybe_apply_chat_template({'messages': example['completion']}, self.tokenizer)["text"] \
+                                 for example in self.buffers[i:i+batch_size]]
+                prompt_inputs = self.tokenizer(
+                    prompts_text, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
+                )['input_ids'].to('cuda:0')
+                with torch.inference_mode():
+                    logps = get_per_token_logps(model, prompt_inputs).cpu().tolist()
+
+                for j in range(len(logps)):
+                    self.buffers[i + j][key] = logps[j]
+
+            del model
+            gc.collect()
+            torch.cuda.empty_cache()  # 清空未被使用的显存缓存
 
     def run_cycle(self):
         self.generate_samples()
+        self.del_model()
+        self.compute_logp()
+        self.save_samples()
         self.train_model() # lora：base model_dir lora lora
         self.load_model() # merge : base + lora
         self.test_model()

@@ -1,5 +1,6 @@
 *.egg-info
-model
+model*
 log
 __pycache__
 buffer.json
+*.out

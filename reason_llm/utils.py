@@ -5,6 +5,7 @@ import os
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 from transformers import LogitsProcessor
+import time
 
 if is_deepspeed_available():
     import deepspeed
@@ -68,7 +69,7 @@ def create_suffix_mask(input_ids, eos_id, ):
     
     mask = 1.0 - mask
     return mask
-import time
+
 
 def apply_lora(model_dir):
 
@@ -102,28 +103,14 @@ def apply_lora(model_dir):
 
     return True
 
-# 自定义 LogitsProcessor 类
-class ThinkCountLogitsProcessor(LogitsProcessor):
-    def __init__(self, keyword, tokenizer):
-
-        self.kids = tokenizer.encode(keyword, add_special_tokens=False)
-        self.ks = len(self.kids)
-        self.eos_id = tokenizer.eos_token_id
-        
-        self.max_occurrences = 5 # 最大出现5次
-        self.keyword_count = 0  # 记录关键词出现次数
-    
-    def __call__(self, input_ids, scores):
-
-        _input_ids = list(input_ids)
-        cnt = 0
-        for j in range(len(_input_ids) - len(self.kids)):
-            if _input_ids[j:j + self.ks] == self.kids:
-                cnt += 1
-                if cnt >= self.max_occurrences:
-                    break
-
-        if cnt == self.max_occurrences:
-            scores[self.eos_id] += 1e5
-
-        return scores
+def get_per_token_logps(model, input_ids):
+    logits = model(input_ids).logits  # (B, L, V)
+    logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token pred
+    input_ids = input_ids[:, 1:]  # (B, L-1), exclude the first input ID since we don't have logits for it
+    # Compute the log probabilities for the input tokens. Use a loop to reduce memory peak.
+    per_token_logps = []
+    for logits_row, input_ids_row in zip(logits, input_ids):
+        log_probs = logits_row.log_softmax(dim=-1)
+        token_log_prob = torch.gather(log_probs, dim=1, index=input_ids_row.unsqueeze(1)).squeeze(1)
+        per_token_logps.append(token_log_prob)
+    return torch.stack(per_token_logps)
