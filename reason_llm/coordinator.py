@@ -99,7 +99,7 @@ class TrainingSamplingCoordinator:
         self.length.clear()
 
     def _to_buffer(self, buffer_msgs, buffer_sols):
-        
+
         # INT_NUM
         msgs = [msg for _msgs in buffer_msgs for msg in _msgs]
         msgs = self._generate(msgs)
@@ -142,7 +142,7 @@ class TrainingSamplingCoordinator:
         current_msgs = []
         current_sols = []
         
-        int_num_sample = MAX_NUM_SEQ // len(system_settings)
+        int_num_sample = MAX_NUM_SEQ // NUM_GENERATIONS
         while len(self.buffers) < INT_NUM:
             _row = self.train_data[self.train_idx % len(self.train_data)]
             row = {k.lower(): v for k,v in _row.items()}
@@ -151,13 +151,13 @@ class TrainingSamplingCoordinator:
                 msgs = [
                     [{"role":"system", "content": sys_set}, 
                     {"role": "user", "content": row['problem']}]
-                    for sys_set in system_settings
+                    for sys_set in SYS_SETS
                 ]
             else:
                 msgs = [
                     [{"role":"system", "content": sys_set}, 
                     {"role": "user", "content": row['question']}]
-                    for sys_set in system_settings
+                    for sys_set in SYS_SETS
                 ]
             current_msgs.append(msgs)
 
@@ -228,7 +228,7 @@ class TrainingSamplingCoordinator:
         buffer_sols = []
 
         self.clear_info()
-        int_num_sample = MAX_NUM_SEQ // len(system_settings)
+        int_num_sample = MAX_NUM_SEQ // NUM_GENERATIONS
         for i in range(len(self.test_data)):
             _row = self.test_data[i]
             row = {k.lower(): v for k, v in _row.items()}
@@ -236,13 +236,13 @@ class TrainingSamplingCoordinator:
                 batch_prompts = [
                     [{"role":"system", "content": sys_set}, 
                     {"role": "user", "content": row['problem']}]
-                    for sys_set in system_settings
+                    for sys_set in SYS_SETS
                 ]
             else:
                 batch_prompts = [
                     [{"role":"system", "content": sys_set}, 
                     {"role": "user", "content": row['question']}]
-                    for sys_set in system_settings
+                    for sys_set in SYS_SETS
                 ]
             buffer_msgs.append(batch_prompts)
 

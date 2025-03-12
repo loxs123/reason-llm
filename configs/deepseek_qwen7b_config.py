@@ -18,7 +18,7 @@ REP_NUM = 1
 GPU = "0"
 GPU_NUM = len(GPU.split(","))
 
-FORMAT_WEIGHT = 0.0 # only 
+FORMAT_WEIGHT = 0.0 # only acc reward
 ACCURACY_WEIGHT = 1.0 
 
 BETA = 0.0 # ref model kl loss
@@ -40,4 +40,3 @@ TRAIN_DATASET = 'di-zhang-fdu/AIME_1983_2024'
 # https://zhuanlan.zhihu.com/p/21465667399
 # 需要调整一下 tokenizer_config.json 中的字段，参照博客内容
 ASSISTANT_TOKEN = '<｜Assistant｜>' # for deepseek qwen 
-

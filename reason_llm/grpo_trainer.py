@@ -243,7 +243,7 @@ class GRPOTrainer(Trainer):
 
         seq_len = prompt_inputs.size(1) - 1
 
-        assistant_id = self.processing_class(ASSISTANT_TOKEN, add_special_tokens=False)['input_ids'][0] # for deepseek
+        assistant_id = self.processing_class(ASSISTANT_TOKEN, add_special_tokens=False)['input_ids'][0]
 
         pad_id = self.processing_class.pad_token_id
         prefix_mask = create_prefix_mask(prompt_inputs, assistant_id)
