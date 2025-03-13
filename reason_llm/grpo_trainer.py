@@ -168,6 +168,35 @@ class GRPOTrainer(Trainer):
                     "This argument can only be used when the `model` argument is a string."
                 )
 
+        # Reference model
+        if args.beta == 0.0:
+            # If beta is 0.0, the reference model is not needed
+            self.ref_model = None
+        elif is_deepspeed_zero3_enabled():
+            self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
+        elif peft_config is None:
+            self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
+            for param in self.ref_model.parameters():
+                param.requires_grad = False
+            self.ref_model.eval()
+        else:
+            # If PEFT is used, the reference model is not needed since the adapter can be disabled
+            # to revert to the initial model.
+            self.ref_model = None
+        
+
+        if os.path.exists(os.path.join(model_dir, 'merge')):
+            pre_model_id = os.path.join(model_dir, 'merge')
+        else:
+            pre_model_id = model_dir
+            
+        if is_deepspeed_zero3_enabled():
+            self.ref_model2 = AutoModelForCausalLM.from_pretrained(pre_model_id)
+        else:
+            self.ref_model2 = AutoModelForCausalLM.from_pretrained(pre_model_id)
+            for param in self.ref_model2.parameters():
+                param.requires_grad = False
+            self.ref_model2.eval()
 
         # Processing class
         if processing_class is None:
@@ -207,6 +236,17 @@ class GRPOTrainer(Trainer):
 
         # Add tags to the model
         self.model.add_model_tags(self._tag_names)
+
+        if self.ref_model is not None:
+            if self.is_deepspeed_enabled:
+                self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
+            else:
+                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
+
+        if self.is_deepspeed_enabled:
+            self.ref_model2 = prepare_deepspeed(self.ref_model2, self.accelerator)
+        else:
+            self.ref_model2 = self.accelerator.prepare_model(self.ref_model2, evaluation_mode=True)
 
 
     def _set_signature_columns_if_needed(self):
@@ -258,8 +298,10 @@ class GRPOTrainer(Trainer):
 
         per_token_logps = get_per_token_logps(model, prompt_completion_ids)
 
-        old_per_token_logps = [example['old_per_token_logps'] for example in inputs]
-        old_per_token_logps = self._logp(old_per_token_logps, seq_len, device)
+        with torch.inference_mode():
+            old_per_token_logps = get_per_token_logps(self.ref_model2, prompt_completion_ids)
+        # old_per_token_logps = [example['old_per_token_logps'] for example in inputs]
+        # old_per_token_logps = self._logp(old_per_token_logps, seq_len, device)
 
         advantages = [example['advantage'] for example in inputs]
         advantages = torch.tensor(advantages, dtype=torch.float32, device=device) # batch_size
@@ -272,9 +314,16 @@ class GRPOTrainer(Trainer):
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if self.beta > 0.0:
             # [2 - last] logps
-            ref_per_token_logps = [example['ref_per_token_logps'] for example in inputs]
-            ref_per_token_logps = self._logp(ref_per_token_logps, seq_len, device)
+            # ref_per_token_logps = [example['ref_per_token_logps'] for example in inputs]
+            # ref_per_token_logps = self._logp(ref_per_token_logps, seq_len, device)
 
+            with torch.inference_mode():
+                if self.ref_model is not None:
+                    ref_per_token_logps = get_per_token_logps(self.ref_model, prompt_completion_ids)
+                else:
+                    with self.accelerator.unwrap_model(model).disable_adapter():
+                        ref_per_token_logps = get_per_token_logps(model, prompt_completion_ids)
+            
             # Compute the KL divergence between the model and the reference model
             per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
             per_token_loss = per_token_loss + self.beta * per_token_kl

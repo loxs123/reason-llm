@@ -13,6 +13,7 @@ import re
 from datasets import load_dataset
 from trl.data_utils import maybe_apply_chat_template
 from transformers import AutoModelForCausalLM
+import deepspeed
 
 from reason_llm.utils import apply_lora, get_per_token_logps
 from reason_llm.config import *
@@ -264,35 +265,38 @@ class TrainingSamplingCoordinator:
         self.clear_info()
     
     def compute_logp(self):
-        ref_model_path = model_dir
-        old_model_path = os.path.join(model_dir, "merge")
-        if not os.path.exists(old_model_path):
-            old_model_path = model_dir
-        batch_size = 4
+        ...
+        # TODO: BUG - The computed log probability (logp) differs from the Trainer's results.
+        # This discrepancy has a substantial impact on the final experimental outcomes(reward)
+        # ref_model_path = model_dir
+        # old_model_path = os.path.join(model_dir, "merge")
+        # if not os.path.exists(old_model_path):
+        #     old_model_path = model_dir
+        # batch_size = 4
         
-        if BETA > 0.0:
-            model_dict = {"old_per_token_logps": old_model_path, "ref_per_token_logps": ref_model_path}
-        else:
-            model_dict = {"old_per_token_logps": old_model_path}
+        # if BETA > 0.0:
+        #     model_dict = {"old_per_token_logps": old_model_path, "ref_per_token_logps": ref_model_path}
+        # else:
+        #     model_dict = {"old_per_token_logps": old_model_path}
 
-        for key, model_id in model_dict.items():
-            model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float16).to('cuda:0')
-            model.eval()
-            for i in tqdm(range(0, len(self.buffers), batch_size)):
-                prompts_text = [maybe_apply_chat_template({'messages': example['completion']}, self.tokenizer)["text"] \
-                                 for example in self.buffers[i:i+batch_size]]
-                prompt_inputs = self.tokenizer(
-                    prompts_text, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
-                )['input_ids'].to('cuda:0')
-                with torch.inference_mode():
-                    logps = get_per_token_logps(model, prompt_inputs).cpu().tolist()
+        # for key, model_id in model_dict.items():
+        #     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+            
+        #     for i in tqdm(range(0, len(self.buffers), batch_size)):
+        #         prompts_text = [maybe_apply_chat_template({'messages': example['completion']}, self.tokenizer)["text"] \
+        #                          for example in self.buffers[i:i+batch_size]]
+        #         prompt_inputs = self.tokenizer(
+        #             prompts_text, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
+        #         )['input_ids'].to('cuda')
+        #         with torch.inference_mode():
+        #             logps = get_per_token_logps(model, prompt_inputs).cpu().tolist()
 
-                for j in range(len(logps)):
-                    self.buffers[i + j][key] = logps[j]
+        #         for j in range(len(logps)):
+        #             self.buffers[i + j][key] = logps[j]
 
-            del model
-            gc.collect()
-            torch.cuda.empty_cache()  # 清空未被使用的显存缓存
+        #     del model
+        #     gc.collect()
+        #     torch.cuda.empty_cache()  # 清空未被使用的显存缓存
 
     def run_cycle(self):
         self.generate_samples()
