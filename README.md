@@ -67,6 +67,7 @@ nohup python -u scripts/train.py &
 
 config_file : `reason_llm/config.py`
 config list : `configs/*.py`
+In multi-GPU training, do not forget update `num_processes` in `reason_llm/deepspeed_zero3.yaml` to match the number of GPUs.
 
 *deepseek : # https://zhuanlan.zhihu.com/p/21465667399*
 
