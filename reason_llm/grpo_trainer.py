@@ -353,7 +353,7 @@ class GRPOTrainer(Trainer):
 
 if __name__ == '__main__':
 
-    totol = INT_NUM * REP_NUM # 每次采样1024个，每个样本重复3次
+    totol = INT_NUM * REP_NUM
 
     epoch_steps = totol / per_device_train_batch_size / gradient_accumulation_steps / GPU_NUM
 

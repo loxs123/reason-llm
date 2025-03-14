@@ -12,8 +12,9 @@ import time
 import re
 from datasets import load_dataset
 from trl.data_utils import maybe_apply_chat_template
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import deepspeed
+import ray
 
 from reason_llm.utils import apply_lora, get_per_token_logps
 from reason_llm.config import *
@@ -28,49 +29,87 @@ def ave_length(msgs, tokenizer):
 def mean(l):
     return sum(l) / len(l)
 
+# 定义 VLLM Worker 远程类
+@ray.remote(num_gpus=PER_VLLM_GPU)  # 每个 VLLM 实例占 1 张 GPU
+class VLLMWorker:
+    def __init__(self, model_dir, gpu_ids):
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_ids
+        self.llm = LLM(
+            model_dir,
+            max_model_len=MAX_MODEL_LEN,
+            trust_remote_code=True,
+            tensor_parallel_size=1,
+            max_num_seqs=MAX_NUM_SEQ,
+            gpu_memory_utilization=0.90,
+        )
+        self.tokenizer = copy.deepcopy(self.llm.get_tokenizer())
+
+    def generate(self, prompts):
+        sampling_params = SamplingParams(
+            temperature=1.0,
+            min_p=0.01,
+            max_tokens=MAX_MODEL_LEN,
+            skip_special_tokens=True
+        )
+        formatted_prompts = [
+            self.tokenizer.apply_chat_template(
+                p, tokenize=False, add_generation_prompt=True
+            )
+            for p in prompts
+        ]
+        outputs = self.llm.generate(formatted_prompts, sampling_params=sampling_params)
+        return [
+            prompt + [{"role": "assistant", "content": output.outputs[0].text}]
+            for prompt, output in zip(prompts, outputs)
+        ]
+
 class TrainingSamplingCoordinator:
     def __init__(self):
-        self.llm = None
-        self.tokenizer = None
         self.train_idx = 0
         self.acc_ave = []
         self.reward = []
         self.acc_major = []
         self.length = []
+        self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
         self.train_data = load_dataset(TRAIN_DATASET)['train']
         self.test_data = load_dataset(TEST_DATASET)['train']
         print('训练集数据集总量：', len(self.train_data))
         print('测试集数据集总量：', len(self.test_data))
-        self.load_model()
+        self.init_vllm_workers()
         
-    def load_model(self):
-        """加载或重新加载模型"""
-        if hasattr(self, 'llm') and self.llm is not None:
-            del self.llm
-            gc.collect()
-            torch.cuda.empty_cache()
-
-        self.llm = self._create_llm_instance()
-        self.tokenizer = copy.deepcopy(self.llm.get_tokenizer())
-
-    def _create_llm_instance(self):
-        """创建LLM实例"""
-
+    def init_vllm_workers(self):
+        """创建多个 VLLM Worker"""
         apply_lora(model_dir)
+        workers = []
         model_path = os.path.join(model_dir, "merge")
-
         if not os.path.exists(model_path):
             model_path = model_dir
+
+        for gpu_ids in VLLM_CONFIG:
+            worker = VLLMWorker.remote(model_path, gpu_ids)
+            workers.append(worker)
+        self.workers = workers
         
-        return LLM(
-            model_path,
-            max_model_len=MAX_MODEL_LEN,
-            trust_remote_code=True,
-            tensor_parallel_size=GPU_NUM,
-            max_num_seqs=MAX_NUM_SEQ,
-            gpu_memory_utilization=0.90,
-        )
+    def _generate(self, prompts):
+        num_workers = len(self.workers)
+        if num_workers == 0:
+            raise RuntimeError("No available VLLM workers!")
+
+        # 任务分配
+        chunk_size = (len(prompts) + num_workers - 1) // num_workers
+        prompt_chunks = [prompts[i:i + chunk_size] for i in range(0, len(prompts), chunk_size)]
+
+        # 并行推理
+        futures = [worker.generate.remote(chunk) for worker, chunk in zip(self.workers, prompt_chunks)]
+        results = ray.get(futures)  # 获取所有结果
+
+        # 保证输出顺序
+        final_results = []
+        for res in results:
+            final_results.extend(res)
+
+        return final_results
 
     def _group_reward_fn(self, completions, solution):
         r1, mj = accuracy_reward(completions, solution)
@@ -176,29 +215,6 @@ class TrainingSamplingCoordinator:
         self.buffers = self.buffers[:INT_NUM]
         print('结束采样下标：', self.train_idx)
 
-    def _generate(self, prompts):
-        sampling_params = SamplingParams(
-            temperature=1.0,
-            min_p=0.01,
-            max_tokens=MAX_MODEL_LEN,
-            skip_special_tokens=True
-        )
-        formatted_prompts = [
-            self.tokenizer.apply_chat_template(
-                p, tokenize=False, add_generation_prompt=True
-            )
-            for p in prompts
-        ]
-        outputs = self.llm.generate(
-            formatted_prompts,
-            sampling_params=sampling_params,
-        )
-        torch.cuda.empty_cache()
-        return [
-            prompt + [{"role": "assistant", "content": output.outputs[0].text}]
-            for prompt, output in zip(prompts, outputs)
-        ]
-
     def save_samples(self,):
         data = self.buffers * REP_NUM
         random.shuffle(data) # 打乱数据
@@ -209,10 +225,17 @@ class TrainingSamplingCoordinator:
         self.buffers.clear()
         print(f"已写入{len(data)}条样本到缓冲区")
     
-    def del_model(self):
-        del self.llm
-        gc.collect()
+    def del_vllm_workers(self):
+        for worker in self.workers:
+            ray.kill(worker)  # 终止 worker
+        self.workers = []  # 清空 worker 列表
+    
+        # 释放显存
         torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+    
+        # 释放 CPU 内存
+        gc.collect()
 
     def train_model(self):
         print("\n--- 开始训练阶段 ---")
@@ -300,9 +323,9 @@ class TrainingSamplingCoordinator:
 
     def run_cycle(self):
         self.generate_samples()
-        self.del_model()
+        self.del_vllm_workers()
         self.compute_logp()
         self.save_samples()
         self.train_model() # lora：base model_dir lora lora
-        self.load_model() # merge : base + lora
+        self.init_vllm_workers() # merge : base + lora
         self.test_model()

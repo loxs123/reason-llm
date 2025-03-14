@@ -18,6 +18,12 @@ REP_NUM = 1
 GPU = "0"
 GPU_NUM = len(GPU.split(","))
 
+VLLM_CONFIG = ['0']  # vLLM resource allocation, where each string represents a GPU allocation
+PER_VLLM_GPU = len(VLLM_CONFIG[0].split(','))  # Number of GPUs allocated per vLLM task
+
+# Ensure all vLLM configurations have the same number of assigned GPUs
+assert len(set([len(v.split(',')) for v in VLLM_CONFIG])) == 1, "every vllm same"
+
 FORMAT_WEIGHT = 1.0
 ACCURACY_WEIGHT = 1.0
 

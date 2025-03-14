@@ -33,13 +33,15 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 ### Prerequisites
 - NVIDIA GPU
 - CUDA 12+
-- Python 3.10+
+- Python 3.9+
 
 ### Installation
 ```bash
 git clone https://github.com/loxs123/reason-llm.git
 cd reason-llm
 pip install -e . # If it fails, please install the required dependencies one by one.
+# Warning: Since vLLM has strict requirements for the Torch version, installing it this way may break the original Torch environment. You may need to adjust the `requirements.txt` file as needed.
+# export HF_ENDPOINT=https://hf-mirror.com # if use mirror
 ```
 
 ### Project Structure
@@ -58,9 +60,17 @@ pip install -e . # If it fails, please install the required dependencies one by 
 ```
 
 ### Launch Training
+
 ```bash
 nohup python -u scripts/train.py &
 ```
+
+config_file : `reason_llm/config.py`
+config list : `configs/*.py`
+
+*deepseek : # https://zhuanlan.zhihu.com/p/21465667399*
+
+*# 需要调整一下 tokenizer_config.json 中的字段，参照博客内容*
 
 ### Some experiences and tips.
 
@@ -78,7 +88,7 @@ nohup python -u scripts/train.py &
 |---------------|--------------------------------------------|
 | **Train Base Model** | [Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) |
 | **Train Type**  | full finetune                           |
-| **Train Hardware** | 1×A100(80G) (May 3×3090 also be OK?) |
+| **Train Hardware** | 1×A100(80G)                          |
 | **Train Time**  | 12h                                     |
 | **Train Dataset**  | [xiaodongguaAIGC/X-R1-7500](https://huggingface.co/datasets/xiaodongguaAIGC/X-R1-7500) |
 | **Test Dataset**  | [AIME 2024 Dataset](https://huggingface.co/datasets/Maxwell-Jia/AIME_2024) |

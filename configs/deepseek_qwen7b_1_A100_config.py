@@ -18,6 +18,9 @@ REP_NUM = 1
 GPU = "0"
 GPU_NUM = len(GPU.split(","))
 
+VLLM_CONFIG = ['0']  # vLLM resource allocation, where each string represents a GPU allocation
+PER_VLLM_GPU = len(VLLM_CONFIG[0].split(','))  # Number of GPUs allocated per vLLM task
+
 FORMAT_WEIGHT = 0.0 # only acc reward
 ACCURACY_WEIGHT = 1.0 
 
