@@ -33,7 +33,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 ### Prerequisites
 - NVIDIA GPU
 - CUDA 12+
-- Python 3.9+
+- Python 3.10+
 
 ### Installation
 ```bash
