@@ -38,8 +38,8 @@ class VLLMWorker:
             model_dir,
             max_model_len=MAX_MODEL_LEN,
             trust_remote_code=True,
-            tensor_parallel_size=1,
-            max_num_seqs=MAX_NUM_SEQ,
+            tensor_parallel_size=PER_VLLM_GPU,
+            max_num_seqs=MAX_NUM_SEQ // len(VLLM_CONFIG),
             gpu_memory_utilization=0.90,
         )
         self.tokenizer = copy.deepcopy(self.llm.get_tokenizer())
