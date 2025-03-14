@@ -70,8 +70,6 @@ config list : `configs/*.py`
 
 *deepseek : # https://zhuanlan.zhihu.com/p/21465667399*
 
-*# 需要调整一下 tokenizer_config.json 中的字段，参照博客内容*
-
 ### Some experiences and tips.
 
 1. The larger the Lora rank, the better(≥128);
