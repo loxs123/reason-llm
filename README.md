@@ -65,12 +65,14 @@ pip install -e . # If it fails, please install the required dependencies one by 
 nohup python -u scripts/train.py &
 ```
 
+### Training considerations
+
+```plain_text
 config_file : `reason_llm/config.py`
 config list : `configs/*.py`
-
-*deepseek : # https://zhuanlan.zhihu.com/p/21465667399*
-
-*# 需要调整一下 tokenizer_config.json 中的字段，参照博客内容*
+In multi-GPU training, do not forget update `num_processes` in `reason_llm/deepspeed_zero3.yaml` to match the number of GPUs.
+deepseek : Need to modify `tokenizer_config.json` https://zhuanlan.zhihu.com/p/21465667399
+```
 
 ### Some experiences and tips.
 
@@ -103,7 +105,7 @@ commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
 | **Train Base Model** | [Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct) |
 | **Train Type**  | full finetune                           |
 | **Train Hardware** | 4×3090                               |
-| **Train Time**  | 5h                                     |
+| **Train Time**  | 5h(1 epoch)                           |
 | **Train Dataset**  | [xiaodongguaAIGC/X-R1-7500](https://huggingface.co/datasets/xiaodongguaAIGC/X-R1-7500) |
 | **Test Dataset**  | [AIME 2024 Dataset](https://huggingface.co/datasets/Maxwell-Jia/AIME_2024) |
 | **System Setting**  | ```A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>``` |
