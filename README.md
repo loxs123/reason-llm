@@ -113,7 +113,7 @@ commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
 ![实验结果](images/metrics_analysis_3b.png)
 [训练日志](log/log2.out)
 
-commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
+commit id:2ee1d88cfaf8c2f3329c0d6222bcfc38c98415d8
 
 The learning performance in the first 10 steps is good, but as training progresses, the model's performance starts to fluctuate. However, its overall performance still surpasses the baseline model.
 
