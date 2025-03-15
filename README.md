@@ -82,6 +82,7 @@ deepseek : Need to modify `tokenizer_config.json` https://zhuanlan.zhihu.com/p/2
 4. Removing samples where reward.std() is too small (<0.1).
 
 ## 📊 Experimental Results
+### Qwen2.5-7B
 
 | Item            | detail                                         |
 |---------------|--------------------------------------------|
@@ -97,6 +98,8 @@ deepseek : Need to modify `tokenizer_config.json` https://zhuanlan.zhihu.com/p/2
 [训练日志](log/log.out)
 commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
 
+### Qwen2.5-3B
+
 | Item            | detail                                         |
 |---------------|--------------------------------------------|
 | **Train Base Model** | [Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct) |
@@ -108,6 +111,9 @@ commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
 | **System Setting**  | ```A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>``` |
 
 ![实验结果](images/metrics_analysis_3b.png)
+[训练日志](log/log2.out)
+
+commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
 
 The learning performance in the first 10 steps is good, but as training progresses, the model's performance starts to fluctuate. However, its overall performance still surpasses the baseline model.
 
