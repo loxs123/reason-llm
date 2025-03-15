@@ -33,7 +33,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 ### Prerequisites
 - NVIDIA GPU
 - CUDA 12+
-- Python 3.9+
+- Python 3.10+
 
 ### Installation
 ```bash
@@ -64,16 +64,13 @@ pip install -e . # If it fails, please install the required dependencies one by 
 ```bash
 nohup python -u scripts/train.py &
 ```
-
 ### Training considerations
-
 ```plain_text
 config_file : `reason_llm/config.py`
 config list : `configs/*.py`
 In multi-GPU training, do not forget update `num_processes` in `reason_llm/deepspeed_zero3.yaml` to match the number of GPUs.
 deepseek : Need to modify `tokenizer_config.json` https://zhuanlan.zhihu.com/p/21465667399
 ```
-
 ### Some experiences and tips.
 
 1. The larger the Lora rank, the better(≥128);

@@ -409,7 +409,7 @@ if __name__ == '__main__':
     #     trainer.train()
     # else:
     #     checkpoint_path = checkpoint_paths[-1]
-    #     if len(checkpoint_paths) >= 2:
+    #     if len(checkpoint_paths) >= 2 and torch.distributed.get_rank() == 0:
     #         print('删除',checkpoint_paths[-2])
     #         shutil.rmtree(checkpoint_paths[-2])
 
@@ -445,7 +445,7 @@ if __name__ == '__main__':
         trainer.train()
     else:
         checkpoint_path = checkpoint_paths[-1]
-        if len(checkpoint_paths) >= 2:
+        if len(checkpoint_paths) >= 2 and torch.distributed.get_rank() == 0:
             print('删除',checkpoint_paths[-2])
             shutil.rmtree(checkpoint_paths[-2])
 

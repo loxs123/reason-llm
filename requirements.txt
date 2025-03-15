@@ -3,6 +3,7 @@ transformers
 trl
 accelerate
 peft
+ray
 deepspeed
 modelscope
 tensorboardX
