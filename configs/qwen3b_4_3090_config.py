@@ -13,21 +13,22 @@ buffer_file = os.path.join(current_dir, "data", "buffer.json")  # File to store 
 per_device_train_batch_size = 4  # Training batch size per device; a larger batch size improves stability
 gradient_accumulation_steps = 16  # Number of gradient accumulation steps to simulate a larger batch size and reduce memory usage
 
-# Model-related parameters
-MAX_MODEL_LEN = 2048  # Maximum model input length in tokens
-MAX_NUM_SEQ = 32 * 3  # The number of sequences processed simultaneously per vLLM worker
-INT_NUM = 12 * 16 * 4  # The number of sequences per training iteration
-REP_NUM = 1  # The number of times each sequence is repeated in a training iteration
-
 # GPU-related parameters
-GPU = "0,1,2"  # GPU device IDs to train model
+GPU = "0,1,2,3"  # GPU device IDs to train model
 GPU_NUM = len(GPU.split(","))  # Number of available GPUs
 
-VLLM_CONFIG = ['0', '1', '2']  # vLLM resource allocation, where each string represents a GPU allocation
+VLLM_CONFIG = ['0', '1', '2', '3']  # vLLM resource allocation, where each string represents a GPU allocation
 PER_VLLM_GPU = len(VLLM_CONFIG[0].split(','))  # Number of GPUs allocated per vLLM task
 
 # Ensure all vLLM configurations have the same number of assigned GPUs
 assert len(set([len(v.split(',')) for v in VLLM_CONFIG])) == 1, "every vllm same"
+
+# Model-related parameters
+MAX_MODEL_LEN = 2048  # Maximum model input length in tokens
+MAX_NUM_SEQ = 32 * len(VLLM_CONFIG)  # The number of sequences processed simultaneously per vLLM worker
+INT_NUM = 16 * 16 * 4  # The number of sequences per training iteration
+REP_NUM = 1  # The number of times each sequence is repeated in a training iteration
+
 
 # Training hyperparameters
 FORMAT_WEIGHT = 1.0  # Weight for format matching

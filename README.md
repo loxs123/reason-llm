@@ -98,6 +98,21 @@ config list : `configs/*.py`
 [训练日志](log/log.out)
 commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
 
+| Item            | detail                                         |
+|---------------|--------------------------------------------|
+| **Train Base Model** | [Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct) |
+| **Train Type**  | full finetune                           |
+| **Train Hardware** | 4×3090                               |
+| **Train Time**  | 5h                                     |
+| **Train Dataset**  | [xiaodongguaAIGC/X-R1-7500](https://huggingface.co/datasets/xiaodongguaAIGC/X-R1-7500) |
+| **Test Dataset**  | [AIME 2024 Dataset](https://huggingface.co/datasets/Maxwell-Jia/AIME_2024) |
+| **System Setting**  | ```A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>``` |
+
+![实验结果](images/metrics_analysis_3b.png)
+
+The learning performance in the first 10 steps is good, but as training progresses, the model's performance starts to fluctuate. However, its overall performance still surpasses the baseline model.
+
+
 ## 📚 References
 1. [VLLM Official Implementation](https://github.com/vllm-project/vllm)
 2. [DeepSeek-R1 Model](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B)
