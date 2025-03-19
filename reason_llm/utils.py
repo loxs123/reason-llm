@@ -6,6 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 from transformers import LogitsProcessor
 import time
+import re
 
 if is_deepspeed_available():
     import deepspeed
@@ -58,7 +59,7 @@ def create_prefix_mask(input_ids, assistant_id):
 def create_suffix_mask(input_ids, eos_id, ):
     # 使用与单轮
     mask = torch.zeros_like(input_ids)  # 初始化全零矩阵
-    
+
     for i, row in enumerate(input_ids):
         eos_idx = (row == eos_id).nonzero(as_tuple=True)[0]
 
@@ -67,7 +68,6 @@ def create_suffix_mask(input_ids, eos_id, ):
     
     mask = 1.0 - mask
     return mask
-
 
 def apply_lora(model_dir):
 
@@ -221,8 +221,20 @@ def masked_z_score_normalization(data, mask, fill_value=0):
     
     return output
 
-
-
 def masked_mean(data, mask, dim = 1):
     return (data * mask).sum(dim = dim) / (mask.sum(dim = dim) + 1e-4)
-    
+
+def remove_stutter(text, min_repeat=3, max_len=5):
+    """
+    Removes repetitive "stuttering" at the end of a text.
+
+    :param text: The input text to be processed.
+    :param min_repeat: Minimum number of times a repeated pattern is considered stuttering.
+    :param max_len: Maximum length of the repeated phrase to check.
+    :return: The processed text with stuttering removed.
+    """
+    for length in range(1, max_len + 1):  # Iterate over possible repetition pattern lengths
+        pattern = r"(" + re.escape(text[-length:]) + r"){%d,}$" % min_repeat
+        if re.search(pattern, text):
+            return re.sub(pattern, "", text)  # Remove excessive repetitions
+    return text

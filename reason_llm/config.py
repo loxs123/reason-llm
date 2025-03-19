@@ -45,12 +45,14 @@ TOKEN_LEVEL_BETA = 0.2
 
 # Generation-related parameters
 NUM_GENERATIONS = 12 # 
-SYS_SET = ("A conversation between User and Assistant. The user asks a question, "
-           "and the Assistant solves it. The assistant first thinks about the "
-           "reasoning process in the mind and then provides the user with the answer. "
-           "The reasoning process and answer are enclosed within <think> </think> "
-           "and <answer> </answer> tags, respectively, i.e., <think> reasoning process"
-           " here </think><answer> answer here </answer>")
+SYS_SET = ("This is a conversation between the User and the Assistant. "
+           "The User asks a question, and the Assistant provides a solution. "
+           "Before giving the answer, the Assistant first thinks through the reasoning process internally. "
+           "The reasoning process is enclosed within <think> </think> tags, "
+           "while the final answer is enclosed within <answer> </answer> tags. "
+           "The response format is as follows:\n"
+           "<think>\nReasoning process here\n</think>\n"
+           "<answer>\nAnswer: \\boxed{answer}\n</answer>")
 
 SYS_SETS = [SYS_SET for _ in range(NUM_GENERATIONS)]  # Duplicate system instruction template to ensure consistency across generation tasks
 

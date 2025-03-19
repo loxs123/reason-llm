@@ -16,7 +16,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import deepspeed
 import ray
 
-from reason_llm.utils import apply_lora, get_per_token_logps
+from reason_llm.utils import apply_lora, get_per_token_logps, remove_stutter
 from reason_llm.config import *
 from reason_llm.reward_fn import *
 
@@ -59,7 +59,7 @@ class VLLMWorker:
         ]
         outputs = self.llm.generate(formatted_prompts, sampling_params=sampling_params)
         return [
-            prompt + [{"role": "assistant", "content": output.outputs[0].text}]
+            prompt + [{"role": "assistant", "content": remove_stutter(output.outputs[0].text)}]
             for prompt, output in zip(prompts, outputs)
         ]
 

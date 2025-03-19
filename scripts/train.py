@@ -5,7 +5,7 @@ if __name__ == "__main__":
     coordinator = TrainingSamplingCoordinator()
     coordinator.test_model()
     # 持续运行训练-采样循环
-    for i in range(20):
+    for i in range(200):
         print("\n=== 开始新的迭代周期 ===")
         start_time = time.time()
         coordinator.run_cycle()
