@@ -63,7 +63,7 @@ def create_suffix_mask(input_ids, eos_id, ):
         eos_idx = (row == eos_id).nonzero(as_tuple=True)[0]
 
         if len(eos_idx) > 0:
-            mask[i, eos_idx[0]: ] = 1
+            mask[i, eos_idx[0] + 1: ] = 1
     
     mask = 1.0 - mask
     return mask
