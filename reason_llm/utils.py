@@ -50,22 +50,20 @@ def create_prefix_mask(input_ids, assistant_id):
         # 找到最后一个 assistant_id 在当前行的索引
         assistant_idx = (row == assistant_id).nonzero(as_tuple=True)[0]
         if len(assistant_idx) > 0:
-            mask[i, assistant_idx[-1]:] = 1.0  # 从最后一个 assistant_id 位置开始置 1
+            mask[i, assistant_idx[-1] + 1:] = 1.0  # 从最后一个 assistant_id 位置开始置 1
     
     return mask
 
 
-# model = AutoModelForCausalLM.from_pretrained('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B')
 def create_suffix_mask(input_ids, eos_id, ):
     # 使用与单轮
     mask = torch.zeros_like(input_ids)  # 初始化全零矩阵
     
     for i, row in enumerate(input_ids):
-        # 找到最后一个 assistant_id 在当前行的索引
         eos_idx = (row == eos_id).nonzero(as_tuple=True)[0]
 
         if len(eos_idx) > 0:
-            mask[i, eos_idx[0]: ] = 1  # 从最后一个 assistant_id 位置开始置 1
+            mask[i, eos_idx[0]: ] = 1
     
     mask = 1.0 - mask
     return mask
@@ -114,3 +112,117 @@ def get_per_token_logps(model, input_ids):
         token_log_prob = torch.gather(log_probs, dim=1, index=input_ids_row.unsqueeze(1)).squeeze(1)
         per_token_logps.append(token_log_prob)
     return torch.stack(per_token_logps)
+
+def compute_approx_kl(
+    log_probs: torch.Tensor,
+    log_probs_base: torch.Tensor,
+    kl_estimator: str = "k1",
+) -> torch.Tensor:
+    """
+    Compute the approximate KL divergence between two distributions.
+    Schulman blog: http://joschu.net/blog/kl-approx.html
+    copy from https://github.com/OpenRLHF/OpenRLHF/blob/main/openrlhf/models/utils.py
+
+    Args:
+        log_probs: Log probabilities of the new distribution.
+        log_probs_base: Log probabilities of the base distribution.
+        action_mask: Mask for actions.
+    """
+
+    if kl_estimator == "k1":
+        log_ratio = log_probs.float() - log_probs_base.float()
+
+    # The k2 estimator is the non negative kl approximation in
+    # http://joschu.net/blog/kl-approx.html
+    # The k2_loss is approximately equivalent to the
+    # one-step KL divergence penalty with the k1 estimator
+    # used in https://arxiv.org/pdf/2310.10505.
+    if kl_estimator == "k2":
+        log_ratio = log_probs.float() - log_probs_base.float()
+        log_ratio = log_ratio**2 / 2.0
+
+    # The k3 estimator is the non negative kl approximation in
+    # http://joschu.net/blog/kl-approx.html
+    if kl_estimator == "k3":
+        log_ratio = log_probs.float() - log_probs_base.float()
+        log_ratio = -log_ratio
+        log_ratio = log_ratio.exp() - 1 - log_ratio
+
+    return log_ratio
+
+def cumulative_sum(tensor: torch.Tensor, dim: int = 0, reverse: bool = False):
+    """
+    Compute the cumulative sum of a tensor.
+    
+    Parameters:
+        tensor (torch.Tensor): Input tensor.
+        dim (int): Dimension along which to compute the cumulative sum, default is 0.
+        reverse (bool): Whether to compute the cumulative sum in reverse order, default is False.
+    
+    Returns:
+        torch.Tensor: The tensor with the computed cumulative sum.
+    """
+
+    if reverse:
+        return torch.flip(torch.cumsum(torch.flip(tensor, [dim]), dim=dim), [dim])
+    return torch.cumsum(tensor, dim=dim)
+
+
+def z_score_normalization(x, dim = 1):
+    mean = torch.mean(x, dim=dim, keepdim=True)
+    std = torch.std(x, dim=dim, keepdim=True)
+    z_scores = (x - mean) / (std + 1e-4)
+    return z_scores
+
+
+
+def masked_z_score_normalization(data, mask, fill_value=0):
+    """
+    Compute the z-score along dim=1 for data after applying the mask, and keep the output shape the same as data.
+    Positions where mask == 0 are filled with fill_value.
+
+    Args:
+        data (torch.Tensor): Input 2D tensor.
+        mask (torch.Tensor): 2D mask tensor with the same shape as data, where 1 indicates to keep and 0 indicates to discard.
+        fill_value (float): Value to fill positions where mask == 0. Default is 0.
+
+    Returns:
+        torch.Tensor: Tensor with the same shape as data, where positions with mask == 1 contain z-scores and positions with mask == 0 contain fill_value.
+    """
+    # Ensure data and mask have the same shape
+    assert data.shape == mask.shape, "data and mask must have the same shape"
+    
+    # Convert mask to boolean type
+    mask = mask.bool()
+    
+    # Initialize the output tensor with fill_value
+    output = torch.full_like(data, fill_value)
+    
+    # Process each row individually
+    for i in range(data.size(0)):
+        # Get the current row's data and mask
+        row_data = data[i]
+        row_mask = mask[i]
+        
+        # If the current row has at least two mask == 1 value
+        if row_mask.sum() >= 2:
+            # Extract data where mask == 1
+            masked_data = row_data[row_mask]
+            
+            # Compute mean and standard deviation
+            mean = masked_data.mean()
+            std = masked_data.std()
+            
+            # Compute z-scores, adding a small epsilon to avoid division by zero
+            z_scores = (masked_data - mean) / (std + 1e-4)
+            
+            # Place the z-scores back into the corresponding positions in the output
+            output[i][row_mask] = z_scores
+    
+    return output
+
+
+
+def masked_mean(data, mask, dim = 1):
+    return (data * mask).sum(dim = dim) / (mask.sum(dim = dim) + 1e-4)
+    

@@ -118,6 +118,10 @@ commit id:2ee1d88cfaf8c2f3329c0d6222bcfc38c98415d8
 The learning performance in the first 10 steps is good, but as training progresses, the model's performance starts to fluctuate. However, its overall performance still surpasses the baseline model.
 
 
+
+逻辑链：
+
+
 ## 📚 References
 1. [VLLM Official Implementation](https://github.com/vllm-project/vllm)
 2. [DeepSeek-R1 Model](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B)

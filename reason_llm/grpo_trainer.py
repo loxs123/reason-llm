@@ -66,6 +66,7 @@ class GRPODataset(th_data.Dataset):
         item = self.data[index]
         return item
 
+
 @dataclass
 class GRPOConfig(TrainingArguments):
     # Parameters that control the model and reference model
@@ -101,9 +102,29 @@ class GRPOConfig(TrainingArguments):
         metadata={"help": "KL coefficient."},
     )
 
-    epsilon: float = field(
-        default=EPSILON,
-        metadata={"help": "KL coefficient."},
+    epsilon_low: float = field(
+        default=EPSILON_LOW,
+        metadata={"help": "clip ratio"},
+    )
+
+    epsilon_high: float = field(
+        default=EPSILON_HIGH,
+        metadata={"help": "clip ratio"},
+    )
+
+    kl_estimator: str = field(
+        default=KL_ESTIMATOR, 
+        metadata={'help': 'kl_estimator'}
+    )
+
+    use_token_level_adv: int = field(
+        default=USE_TOKEN_LEVEL_ADV,
+        metadata={"help": "use_token_level_adv."},
+    )
+
+    token_level_beta: float = field(
+        default=TOKEN_LEVEL_BETA,
+        metadata={'help': 'token level beta'}
     )
 
 if is_peft_available():
@@ -191,12 +212,12 @@ class GRPOTrainer(Trainer):
             pre_model_id = model_dir
             
         if is_deepspeed_zero3_enabled():
-            self.ref_model2 = AutoModelForCausalLM.from_pretrained(pre_model_id)
+            self.old_model = AutoModelForCausalLM.from_pretrained(pre_model_id)
         else:
-            self.ref_model2 = AutoModelForCausalLM.from_pretrained(pre_model_id)
-            for param in self.ref_model2.parameters():
+            self.old_model = AutoModelForCausalLM.from_pretrained(pre_model_id)
+            for param in self.old_model.parameters():
                 param.requires_grad = False
-            self.ref_model2.eval()
+            self.old_model.eval()
 
         # Processing class
         if processing_class is None:
@@ -211,7 +232,8 @@ class GRPOTrainer(Trainer):
             return features
 
         self.beta = args.beta
-        self.epsilon = args.epsilon
+        self.epsilon_low = args.epsilon_low
+        self.epsilon_high = args.epsilon_high
 
         model.warnings_issued["estimate_tokens"] = True
 
@@ -244,9 +266,9 @@ class GRPOTrainer(Trainer):
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
         if self.is_deepspeed_enabled:
-            self.ref_model2 = prepare_deepspeed(self.ref_model2, self.accelerator)
+            self.old_model = prepare_deepspeed(self.old_model, self.accelerator)
         else:
-            self.ref_model2 = self.accelerator.prepare_model(self.ref_model2, evaluation_mode=True)
+            self.old_model = self.accelerator.prepare_model(self.old_model, evaluation_mode=True)
 
 
     def _set_signature_columns_if_needed(self):
@@ -299,18 +321,24 @@ class GRPOTrainer(Trainer):
         per_token_logps = get_per_token_logps(model, prompt_completion_ids)
 
         with torch.inference_mode():
-            old_per_token_logps = get_per_token_logps(self.ref_model2, prompt_completion_ids)
+            old_per_token_logps = get_per_token_logps(self.old_model, prompt_completion_ids)
         # old_per_token_logps = [example['old_per_token_logps'] for example in inputs]
         # old_per_token_logps = self._logp(old_per_token_logps, seq_len, device)
 
         advantages = [example['advantage'] for example in inputs]
         advantages = torch.tensor(advantages, dtype=torch.float32, device=device) # batch_size
+        if self.args.use_token_level_adv > 0:
+            possiblities = 1 - torch.exp(old_per_token_logps)
+            possiblities_mean = masked_mean(possiblities, mask, dim = 1)
+            advantages = advantages.unsqueeze(1) * torch.clamp(1 + self.args.token_level_beta * (possiblities - possiblities_mean.unsqueeze(1)).detach(), min = 0)
+        else:
+            advantages = advantages.unsqueeze(1)
 
         # x - x.detach() allows for preserving gradients from x
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
-        coef_2 = torch.clamp(coef_1, 1 - self.epsilon, 1 + self.epsilon)
-        per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-        per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+        per_token_loss1 = coef_1 * advantages
+        per_token_loss2 = coef_2 * advantages
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if self.beta > 0.0:
             # [2 - last] logps
@@ -325,7 +353,9 @@ class GRPOTrainer(Trainer):
                         ref_per_token_logps = get_per_token_logps(model, prompt_completion_ids)
             
             # Compute the KL divergence between the model and the reference model
-            per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+            # per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+            per_token_kl = compute_approx_kl(per_token_logps, ref_per_token_logps, self.args.kl_estimator)
+            
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
         loss = ((per_token_loss * mask).sum(dim=1) / mask.sum(dim=1)).mean()
@@ -421,7 +451,8 @@ if __name__ == '__main__':
 
     # # for vllm
     # trainer.save_model(os.path.join(model_dir, 'lora'))
-    # trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
+    # if torch.distributed.get_rank() == 0:
+    #     trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
 
     # ############# LoRA END ###################
     
@@ -456,4 +487,6 @@ if __name__ == '__main__':
         trainer.train(checkpoint_path)
 
     trainer.save_model(os.path.join(model_dir, 'merge'))
-    trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))
+
+    if torch.distributed.get_rank() == 0:
+        trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))

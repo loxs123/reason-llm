@@ -28,18 +28,22 @@ MAX_MODEL_LEN = 2048  # Maximum model input length in tokens
 MAX_NUM_SEQ = 32 * len(VLLM_CONFIG)  # The number of sequences processed simultaneously per vLLM worker
 INT_NUM = 16 * 16 * 4  # The number of sequences per training iteration
 REP_NUM = 1  # The number of times each sequence is repeated in a training iteration
-
+assert (INT_NUM * REP_NUM) % (per_device_train_batch_size * gradient_accumulation_steps * GPU_NUM) == 0
 
 # Training hyperparameters
 FORMAT_WEIGHT = 1.0  # Weight for format matching
 ACCURACY_WEIGHT = 1.0  # Weight for accuracy
 
 BETA = 0.0  # KL divergence loss weight for reference model (used for loss control)
-EPSILON = 0.2  # PPO algorithm clip ratio, controlling the update magnitude of the policy
+EPSILON_LOW = 0.2  # PPO algorithm clip ratio, controlling the update magnitude of the policy
+EPSILON_HIGH = 0.2  # PPO algorithm clip ratio, controlling the update magnitude of the policy
 LR = 3e-6  # Learning rate
+KL_ESTIMATOR = 'k3' # 
+USE_TOKEN_LEVEL_ADV = 0
+TOKEN_LEVEL_BETA = 0.2
 
 # Generation-related parameters
-NUM_GENERATIONS = 8  # 
+NUM_GENERATIONS = 8 # 
 SYS_SET = ("A conversation between User and Assistant. The user asks a question, "
            "and the Assistant solves it. The assistant first thinks about the "
            "reasoning process in the mind and then provides the user with the answer. "
@@ -55,6 +59,36 @@ assert MAX_NUM_SEQ % NUM_GENERATIONS == 0
 # Training and testing datasets
 TRAIN_DATASET = "xiaodongguaAIGC/X-R1-7500"  # Training dataset
 TEST_DATASET = "HuggingFaceH4/aime_2024"  # Testing dataset
+START_TRAIN_IDX = 0 # The train_idx from the last training process.
 
 # Predefined assistant role token
 ASSISTANT_TOKEN = 'assistant' # 
+
+# 需要根据数据集格式编写build_msgs函数和build_sol函数
+def build_msgs(row, mode='train'):
+    # row中所有的key已经变为小写
+    assert mode in {"train", "test"}
+    if mode == 'train':
+        question = row['problem']
+        msgs = [
+            [{"role":"system", "content": sys_set}, 
+            {"role": "user", "content": question}]
+            for sys_set in SYS_SETS
+        ]
+    else:
+        question = row['problem']
+        msgs = [
+            [{"role":"system", "content": sys_set}, 
+            {"role": "user", "content": question}]
+            for sys_set in SYS_SETS
+        ]
+
+    return msgs
+
+def build_sol(row, mode='train'):
+    # row中所有的key已经变为小写
+    assert mode in {"train", "test"}
+    if mode == 'train':
+        return row['solution']
+    else:
+        return '\\boxed{' + row['answer'] + '}'

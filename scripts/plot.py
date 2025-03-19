@@ -1,6 +1,9 @@
 import re
 import matplotlib.pyplot as plt
 import pandas as pd
+from reason_llm.config import *
+
+step = INT_NUM * REP_NUM // (GPU_NUM * per_device_train_batch_size * gradient_accumulation_steps)
 
 with open('nohup.out') as f:
     data = f.read()
@@ -27,7 +30,7 @@ for ax, (y, title) in zip(axes.flat, data_options):
     y_series = pd.Series(y)
     y_smooth = y_series.rolling(window=5).mean()
     x = list(range(len(y)))
-    x = [_x * 4 for _x in x]
+    x = [_x * step for _x in x]
     
     ax.plot(x, y, label='Original Data', marker='.')
     ax.plot(x, y_smooth, label='Smoothed Data', marker='.')

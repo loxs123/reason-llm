@@ -65,14 +65,14 @@ class VLLMWorker:
 
 class TrainingSamplingCoordinator:
     def __init__(self):
-        self.train_idx = 0
+        self.train_idx = START_TRAIN_IDX
         self.acc_ave = []
         self.reward = []
         self.acc_major = []
         self.length = []
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
-        self.train_data = load_dataset(TRAIN_DATASET)['train']
+        self.train_data = load_dataset(TRAIN_DATASET)['train'].shuffle(seed=42)
         self.test_data = load_dataset(TEST_DATASET)['train']
         print('训练集数据集总量：', len(self.train_data))
         print('测试集数据集总量：', len(self.test_data))
@@ -187,24 +187,8 @@ class TrainingSamplingCoordinator:
             _row = self.train_data[self.train_idx % len(self.train_data)]
             row = {k.lower(): v for k,v in _row.items()}
 
-            if 'problem' in row:
-                msgs = [
-                    [{"role":"system", "content": sys_set}, 
-                    {"role": "user", "content": row['problem']}]
-                    for sys_set in SYS_SETS
-                ]
-            else:
-                msgs = [
-                    [{"role":"system", "content": sys_set}, 
-                    {"role": "user", "content": row['question']}]
-                    for sys_set in SYS_SETS
-                ]
-            current_msgs.append(msgs)
-
-            if 'solution' in row:
-                current_sols.append(row['solution'])
-            else:
-                current_sols.append('\\boxed{' + str(row['answer']) + '}')
+            current_msgs.append(build_msgs(row, mode='train'))
+            current_sols.append(build_sol(row, mode='train'))
 
             if (self.train_idx + 1) % int_num_sample == 0:
                 self.buffers += self._to_buffer(current_msgs, current_sols)
@@ -227,62 +211,44 @@ class TrainingSamplingCoordinator:
     
     def del_vllm_workers(self):
         for worker in self.workers:
-            ray.kill(worker)  # 终止 worker
-        self.workers = []  # 清空 worker 列表
+            ray.kill(worker)
+        self.workers = []
     
-        # 释放显存
         torch.cuda.empty_cache()
         torch.cuda.ipc_collect()
     
-        # 释放 CPU 内存
         gc.collect()
 
     def train_model(self):
         print("\n--- 开始训练阶段 ---")
         if GPU_NUM == 1:
             # for single gpu use deepspeed_zero2
-            os.system(f'CUDA_VISIBLE_DEVICES={GPU} accelerate launch --config_file "{current_dir}/reason_llm/deepspeed_zero2.yaml" "{current_dir}/reason_llm/grpo_trainer.py"')
+            os.system(f'CUDA_VISIBLE_DEVICES={GPU} accelerate launch --config_file "{current_dir}/reason_llm/ds_cfgs/deepspeed_zero2.yaml" "{current_dir}/reason_llm/grpo_trainer.py"')
         else:
             # for multi gpu use deepspeed_zero3
-            os.system(f'CUDA_VISIBLE_DEVICES={GPU} accelerate launch --config_file "{current_dir}/reason_llm/deepspeed_zero3.yaml" "{current_dir}/reason_llm/grpo_trainer.py"')
+            os.system(f'CUDA_VISIBLE_DEVICES={GPU} accelerate launch --config_file "{current_dir}/reason_llm/ds_cfgs/deepspeed_zero3.yaml" "{current_dir}/reason_llm/grpo_trainer.py"')
 
     def test_model(self):
         print("\n--- 开始测试阶段 ---")
-        buffer_msgs = []
-        buffer_sols = []
+        current_msgs = []
+        current_sols = []
 
         self.clear_info()
         int_num_sample = MAX_NUM_SEQ // NUM_GENERATIONS
         for i in range(len(self.test_data)):
             _row = self.test_data[i]
             row = {k.lower(): v for k, v in _row.items()}
-            if 'problem' in row:
-                batch_prompts = [
-                    [{"role":"system", "content": sys_set}, 
-                    {"role": "user", "content": row['problem']}]
-                    for sys_set in SYS_SETS
-                ]
-            else:
-                batch_prompts = [
-                    [{"role":"system", "content": sys_set}, 
-                    {"role": "user", "content": row['question']}]
-                    for sys_set in SYS_SETS
-                ]
-            buffer_msgs.append(batch_prompts)
-
-            if 'solution' in row:
-                buffer_sols.append(row['solution'])
-            else:
-                buffer_sols.append('\\boxed{' + str(row['answer']) + '}')
+            current_msgs.append(build_msgs(row, mode='test'))
+            current_sols.append(build_sol(row, mode='test'))
 
             if (i + 1) % int_num_sample == 0:
-                self._to_buffer(buffer_msgs, buffer_sols)
-                buffer_msgs.clear()
-                buffer_sols.clear()
+                self._to_buffer(current_msgs, current_sols)
+                current_msgs.clear()
+                current_sols.clear()
                 self.log_info()
 
-        if len(buffer_msgs) > 0:
-            self._to_buffer(buffer_msgs, buffer_sols)
+        if len(current_msgs) > 0:
+            self._to_buffer(current_msgs, current_sols)
 
         self.log_info()
         self.clear_info()
@@ -303,7 +269,7 @@ class TrainingSamplingCoordinator:
         #     model_dict = {"old_per_token_logps": old_model_path}
 
         # for key, model_id in model_dict.items():
-        #     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+        #     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True).to('cuda')
             
         #     for i in tqdm(range(0, len(self.buffers), batch_size)):
         #         prompts_text = [maybe_apply_chat_template({'messages': example['completion']}, self.tokenizer)["text"] \
