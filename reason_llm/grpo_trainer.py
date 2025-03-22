@@ -327,12 +327,7 @@ class GRPOTrainer(Trainer):
 
         advantages = [example['advantage'] for example in inputs]
         advantages = torch.tensor(advantages, dtype=torch.float32, device=device) # batch_size
-        if self.args.use_token_level_adv > 0:
-            possiblities = 1 - torch.exp(old_per_token_logps)
-            possiblities_mean = masked_mean(possiblities, mask, dim = 1)
-            advantages = advantages.unsqueeze(1) * torch.clamp(1 + self.args.token_level_beta * (possiblities - possiblities_mean.unsqueeze(1)).detach(), min = 0)
-        else:
-            advantages = advantages.unsqueeze(1)
+        advantages = advantages.unsqueeze(1)
 
         # x - x.detach() allows for preserving gradients from x
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
