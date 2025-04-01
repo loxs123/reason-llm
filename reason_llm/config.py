@@ -7,93 +7,78 @@ current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Define paths for model, logs, and data buffer file
 model_dir = os.path.join(current_dir, "model")  # Directory to store trained models
 log_dir = os.path.join(current_dir, "log")  # Directory to store training logs
-buffer_file = os.path.join(current_dir, "data", "buffer.json")  # File to store data buffer
+data_dir = os.path.join(current_dir, "data")  # File to store data buffer
+config_file = os.path.join(current_dir, 'reason_llm', 'config.py')
 
 # Training-related parameters
 per_device_train_batch_size = 4  # Training batch size per device; a larger batch size improves stability
-gradient_accumulation_steps = 4  # Number of gradient accumulation steps to simulate a larger batch size and reduce memory usage
-# total_batch_size = 4 * 4 * 4 = 64
+gradient_accumulation_steps = 32  # Number of gradient accumulation steps to simulate a larger batch size and reduce memory usage
 
 # GPU-related parameters
 GPU = "0,1,2,3"  # GPU device IDs to train model
 GPU_NUM = len(GPU.split(","))  # Number of available GPUs
 
-VLLM_CONFIG = ['0', '1', '2', '3']  # vLLM resource allocation, where each string represents a GPU allocation
+VLLM_CONFIG = ['0','1', '2', '3']  # vLLM resource allocation, where each string represents a GPU allocation
 PER_VLLM_GPU = len(VLLM_CONFIG[0].split(','))  # Number of GPUs allocated per vLLM task
 
 # Ensure all vLLM configurations have the same number of assigned GPUs
 assert len(set([len(v.split(',')) for v in VLLM_CONFIG])) == 1, "every vllm same"
 
 # Model-related parameters
-MAX_MODEL_LEN = 2048  # Maximum model input length in tokens
+MAX_MODEL_LEN = 4096  # Maximum model input length in tokens
+TRAIN_MAX_GENERATE_LEN = 3000
+EVAL_MAX_GENERATE_LEN = 3000
 MAX_NUM_SEQ = 48 * len(VLLM_CONFIG)  # The number of sequences processed simultaneously per vLLM worker
-INT_NUM = 256  # The number of sequences per training iteration
-REP_NUM = 1  # The number of times each sequence is repeated in a training iteration
-assert (INT_NUM * REP_NUM) % (per_device_train_batch_size * gradient_accumulation_steps * GPU_NUM) == 0
+INT_NUM = 1024  # The number of sequences per training iteration
+ITER_NUM = 200  # The number of iter
+TEST_FREQ = 5  # 
+assert INT_NUM % (per_device_train_batch_size * gradient_accumulation_steps * GPU_NUM) == 0
 
 # Training hyperparameters
-FORMAT_WEIGHT = 1.0  # Weight for format matching
+FORMAT_WEIGHT = 0.0    # Weight for format matching
 ACCURACY_WEIGHT = 1.0  # Weight for accuracy
 
 BETA = 0.0  # KL divergence loss weight for reference model (used for loss control)
 EPSILON_LOW = 0.2  # PPO algorithm clip ratio, controlling the update magnitude of the policy
-EPSILON_HIGH = 0.28  # PPO algorithm clip ratio, controlling the update magnitude of the policy
+EPSILON_HIGH = 0.2  # PPO algorithm clip ratio, controlling the update magnitude of the policy
 LR = 3e-6  # Learning rate
 KL_ESTIMATOR = 'k2' # 
 USE_TOKEN_LEVEL_ADV = 1
 TOKEN_LEVEL_BETA = 0.2
 
 # Generation-related parameters
-NUM_GENERATIONS = 12 # 
-SYS_SET = ("This is a conversation between the User and the Assistant. "
-           "The User asks a question, and the Assistant provides a solution. "
-           "Before giving the answer, the Assistant first thinks through the reasoning process internally. "
-           "The reasoning process is enclosed within <think> </think> tags, "
-           "while the final answer is enclosed within <answer> </answer> tags. "
-           "The response format is as follows:\n"
-           "<think>\nReasoning process here\n</think>\n"
-           "<answer>\nAnswer: \\boxed{answer}\n</answer>")
-
-SYS_SETS = [SYS_SET for _ in range(NUM_GENERATIONS)]  # Duplicate system instruction template to ensure consistency across generation tasks
+NUM_GENERATIONS = 8 # 
+SYS_SET = 'Please reason step by step, and put your final answer within \\boxed{}.'
 
 # Ensure MAX_NUM_SEQ is divisible by NUM_GENERATIONS
 assert MAX_NUM_SEQ % NUM_GENERATIONS == 0
 
 # Training and testing datasets
-TRAIN_DATASET = "BytedTsinghua-SIA/DAPO-Math-17k"  # Training dataset
-TEST_DATASET = "HuggingFaceH4/aime_2024"  # Testing dataset
+TRAIN_DATASET = "/root/lanyun-tmp/reason-llm/data/math_12k"  # Training dataset
+TEST_DATASETS = ["/root/lanyun-tmp/reason-llm/data/aime",  # 30
+                 '/root/lanyun-tmp/reason-llm/data/minerva', # 272
+                 '/root/lanyun-tmp/reason-llm/data/olympiad_bench', # 675
+                 '/root/lanyun-tmp/reason-llm/data/amc', # 45
+                 '/root/lanyun-tmp/reason-llm/data/math', # 500
+                ]
+
 START_TRAIN_IDX = 0 # The train_idx from the last training process.
 
 # Predefined assistant role token
 ASSISTANT_TOKEN = 'assistant' # 
 
 # 需要根据数据集格式编写build_msgs函数和build_sol函数
-def build_msgs(row, mode='train'):
-    # row中所有的key已经变为小写
-    assert mode in {"train", "test"}
-    if mode == 'train':
-        question = row['prompt'][0]['content']
-        question = re.sub('Solve.*?answer to the problem.\n\n', '', question)
-        question = re.sub('\n\nRemember to put y.*? "Answer:".', '', question)
-        msgs = [
-            [{"role":"system", "content": sys_set}, 
-            {"role": "user", "content": question}]
-            for sys_set in SYS_SETS
-        ]
-    else:
-        question = row['problem']
-        msgs = [
-            [{"role":"system", "content": sys_set}, 
-            {"role": "user", "content": question}]
-            for sys_set in SYS_SETS
-        ]
+def build_msgs(row, dataset, num_generations):
+    question = row['problem']
+    msgs = [
+        [{"role":"system", "content": SYS_SET}, 
+        {"role": "user", "content": question}]
+        for _ in range(num_generations)
+    ]
 
     return msgs
 
-def build_sol(row, mode='train'):
+def build_sol(row, dataset):
     # row中所有的key已经变为小写
-    assert mode in {"train", "test"}
-    if mode == 'train':
-        return '\\boxed{' + row['reward_model']['ground_truth'] + '}'
-    else:
-        return '\\boxed{' + row['answer'] + '}'
+    return row['answer']
+    # return '\\boxed{'+ row['answer'] + '}'

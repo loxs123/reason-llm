@@ -304,6 +304,7 @@ class GRPOTrainer(Trainer):
         )['input_ids']
 
         seq_len = prompt_inputs.size(1) - 1
+        batch_size = prompt_inputs.size(0)
 
         assistant_id = self.processing_class(ASSISTANT_TOKEN, add_special_tokens=False)['input_ids'][0]
 
@@ -330,11 +331,12 @@ class GRPOTrainer(Trainer):
         if self.args.use_token_level_adv > 0:
             possiblities = 1 - torch.exp(old_per_token_logps)
             possiblities_mean = masked_mean(possiblities, mask, dim = 1)
-            advantages = advantages.unsqueeze(1) * torch.clamp(1 + self.args.token_level_beta * (possiblities - possiblities_mean.unsqueeze(1)).detach(), min = 0)
+            possiblities_hat = possiblities - possiblities_mean.unsqueeze(1)
+            advantages_beta = torch.clamp(1 + self.args.token_level_beta * possiblities_hat, min = 0)
+            advantages = advantages.unsqueeze(1) * advantages_beta.detach()
         else:
             advantages = advantages.unsqueeze(1)
 
-        # x - x.detach() allows for preserving gradients from x
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
         per_token_loss1 = coef_1 * advantages
@@ -351,14 +353,15 @@ class GRPOTrainer(Trainer):
                 else:
                     with self.accelerator.unwrap_model(model).disable_adapter():
                         ref_per_token_logps = get_per_token_logps(model, prompt_completion_ids)
-            
+
             # Compute the KL divergence between the model and the reference model
             # per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
             per_token_kl = compute_approx_kl(per_token_logps, ref_per_token_logps, self.args.kl_estimator)
-            
+
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        loss = ((per_token_loss * mask).sum(dim=1) / mask.sum(dim=1)).mean()
+        # loss = ((per_token_loss * mask).sum(dim=1) / mask.sum(dim=1)).mean()
+        loss = (per_token_loss * mask).sum() / (batch_size * MAX_MODEL_LEN)
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)
@@ -383,25 +386,24 @@ class GRPOTrainer(Trainer):
 
 if __name__ == '__main__':
 
-    totol = INT_NUM * REP_NUM
+    epoch_steps = INT_NUM / per_device_train_batch_size / gradient_accumulation_steps / GPU_NUM
+    buffer_file_pattern = os.path.join(data_dir, 'buffer*.json')
+    buffer_files = glob.glob(buffer_file_pattern)
+    buffer_files.sort(reverse = True)
 
-    epoch_steps = totol / per_device_train_batch_size / gradient_accumulation_steps / GPU_NUM
-
-    # 加载数据集
-    train_dataset = GRPODataset(buffer_file)
+    train_dataset = GRPODataset(buffer_files[0])
+    # model = AutoModelForCausalLM.from_pretrained(model_dir,attn_implementation="flash_attention_2")
     model = AutoModelForCausalLM.from_pretrained(model_dir)
-    # 配置训练参数
     training_args = GRPOConfig(
         output_dir=os.path.join(model_dir, 'tmp'), # full
         num_train_epochs=1,
         per_device_train_batch_size=per_device_train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         logging_dir=os.path.join(log_dir, f"experiment_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"),
-        report_to="tensorboard",
         overwrite_output_dir=True,
         bf16=True,
         logging_steps=1,
-        log_level="info",
+        # log_level="info",
         lr_scheduler_type="constant",
     )
 
@@ -435,15 +437,12 @@ if __name__ == '__main__':
     # checkpoint_paths.sort(key = lambda x: int(x.split('-')[-1]))
     
     # if len(checkpoint_paths) == 0:
-    #     print('从头开始训练')
     #     trainer.train()
     # else:
     #     checkpoint_path = checkpoint_paths[-1]
     #     if len(checkpoint_paths) >= 2 and torch.distributed.get_rank() == 0:
-    #         print('删除',checkpoint_paths[-2])
     #         shutil.rmtree(checkpoint_paths[-2])
 
-    #     print(f'从{checkpoint_path}开始训练...')
     #     steps = int(checkpoint_path.split('-')[-1])
 
     #     training_args.num_train_epochs = steps // epoch_steps + 1
@@ -472,15 +471,12 @@ if __name__ == '__main__':
     checkpoint_paths.sort(key = lambda x: int(x.split('-')[-1]))
     
     if len(checkpoint_paths) == 0:
-        print('从头开始训练')
         trainer.train()
     else:
         checkpoint_path = checkpoint_paths[-1]
         if len(checkpoint_paths) >= 2 and torch.distributed.get_rank() == 0:
-            print('删除',checkpoint_paths[-2])
             shutil.rmtree(checkpoint_paths[-2])
 
-        print(f'从{checkpoint_path}开始训练...')
         steps = int(checkpoint_path.split('-')[-1])
 
         training_args.num_train_epochs = steps // epoch_steps + 1

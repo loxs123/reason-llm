@@ -39,15 +39,14 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 ```bash
 git clone https://github.com/loxs123/reason-llm.git
 cd reason-llm
-pip install -e . # If it fails, please install the required dependencies one by one.
-# Warning: Since vLLM has strict requirements for the Torch version, installing it this way may break the original Torch environment. You may need to adjust the `requirements.txt` file as needed.
+pip install vllm
+pip install -e . 
 # export HF_ENDPOINT=https://hf-mirror.com # if use mirror
 ```
 
 ### Project Structure
 ```bash
 ├── data
-│   ├── test.csv         # Test dataset
 │   └── buffer.json      # Auto-generated training buffer
 ├── model                # Model directory
 │   ├── config.json      # put your model here
@@ -70,6 +69,8 @@ config_file : `reason_llm/config.py`
 config list : `configs/*.py`
 In multi-GPU training, do not forget update `num_processes` in `reason_llm/deepspeed_zero3.yaml` to match the number of GPUs.
 deepseek : Need to modify `tokenizer_config.json` https://zhuanlan.zhihu.com/p/21465667399
+CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file "reason_llm/ds_cfgs/deepspeed_zero2.yaml" reason_llm/grpo_trainer.py # for test
+CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch --config_file "reason_llm/ds_cfgs/deepspeed_zero3.yaml" reason_llm/grpo_trainer.py # for test
 ```
 ### Some experiences and tips.
 
@@ -98,29 +99,6 @@ deepseek : Need to modify `tokenizer_config.json` https://zhuanlan.zhihu.com/p/2
 [训练日志](log/log.out)
 commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
 
-### Qwen2.5-3B
-
-| Item            | detail                                         |
-|---------------|--------------------------------------------|
-| **Train Base Model** | [Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct) |
-| **Train Type**  | full finetune                           |
-| **Train Hardware** | 4×3090                               |
-| **Train Time**  | 5h(1 epoch)                           |
-| **Train Dataset**  | [xiaodongguaAIGC/X-R1-7500](https://huggingface.co/datasets/xiaodongguaAIGC/X-R1-7500) |
-| **Test Dataset**  | [AIME 2024 Dataset](https://huggingface.co/datasets/Maxwell-Jia/AIME_2024) |
-| **System Setting**  | ```A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>``` |
-
-![实验结果](images/metrics_analysis_3b.png)
-[训练日志](log/log2.out)
-
-commit id:2ee1d88cfaf8c2f3329c0d6222bcfc38c98415d8
-
-The learning performance in the first 10 steps is good, but as training progresses, the model's performance starts to fluctuate. However, its overall performance still surpasses the baseline model.
-
-
-
-逻辑链：
-
 
 ## 📚 References
 1. [VLLM Official Implementation](https://github.com/vllm-project/vllm)
@@ -129,5 +107,14 @@ The learning performance in the first 10 steps is good, but as training progress
 4. [AIME Dataset](https://huggingface.co/datasets/di-zhang-fdu/AIME_1983_2024)
 5. [X-R1](https://github.com/dhcode-cpp/X-R1)
 ---
+
+```bibtex
+@misc{reason-llm,
+  author = {Xin Li},
+  title = {Reason-LLM: Training Large Language Models for Better Reasoning},
+  year = {2025},
+  howpublished = {\url{https://github.com/loxs123/reason-llm}}
+}
+```
 
 *Empowering efficient LLM fine-tuning for everyone* 🤖

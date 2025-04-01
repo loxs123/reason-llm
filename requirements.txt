@@ -1,4 +1,3 @@
-vllm
 transformers
 trl
 accelerate

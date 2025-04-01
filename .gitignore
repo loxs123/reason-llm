@@ -4,3 +4,4 @@ log
 __pycache__
 buffer.json
 *.out
+*.zip

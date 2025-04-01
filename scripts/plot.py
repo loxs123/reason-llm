@@ -5,7 +5,7 @@ from reason_llm.config import *
 
 step = INT_NUM * REP_NUM // (GPU_NUM * per_device_train_batch_size * gradient_accumulation_steps)
 
-with open('nohup.out') as f:
+with open('nohup_final_2.out') as f:
     data = f.read()
     y1 = re.findall(r'平均正确率：(.*?)，多数投票正确率：(.*?)，平均奖励：(.*?)，平均长度：(.*?)\n已写入.*?条样本到缓冲区', data)
     y20 = re.findall(r'平均正确率：(.*?)，多数投票正确率：(.*?)，平均奖励：(.*?)，平均长度：(.*?)\n\n=== 开始新的迭代周期 ===', data)
