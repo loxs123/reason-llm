@@ -111,7 +111,7 @@ commit id:9de0d1fda962a42a9e6a6b4ed10ddf3f171dea3c
 ```bibtex
 @misc{reason-llm,
   author = {Xin Li},
-  title = {Reason-LLM: Training Large Language Models for Better Reasoning},
+  title = {ReasonLLM: Efficient LLM RL Fine-Tuning with Optimized Resource Utilization},
   year = {2025},
   howpublished = {\url{https://github.com/loxs123/reason-llm}}
 }
