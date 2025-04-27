@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from reason_llm.config import *
 
-step = INT_NUM * REP_NUM // (GPU_NUM * per_device_train_batch_size * gradient_accumulation_steps)
+step = INT_NUM // (GPU_NUM * per_device_train_batch_size * gradient_accumulation_steps)
 
 with open('nohup_final_2.out') as f:
     data = f.read()

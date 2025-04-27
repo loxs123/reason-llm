@@ -18,17 +18,18 @@ gradient_accumulation_steps = 32  # Number of gradient accumulation steps to sim
 GPU = "0,1,2,3"  # GPU device IDs to train model
 GPU_NUM = len(GPU.split(","))  # Number of available GPUs
 
-VLLM_CONFIG = ['0','1', '2', '3']  # vLLM resource allocation, where each string represents a GPU allocation
-PER_VLLM_GPU = len(VLLM_CONFIG[0].split(','))  # Number of GPUs allocated per vLLM task
+GENERATE_BACKEND = 'lmdeploy' # or vllm/lmdeploy/sglang
+GENERATE_GPU_CONFIG = ['0','1','2','3']  # vLLM resource allocation, where each string represents a GPU allocation
+GENERATE_PER_WORKER_GPU = len(GENERATE_GPU_CONFIG[0].split(','))  # Number of GPUs allocated per vLLM task
 
 # Ensure all vLLM configurations have the same number of assigned GPUs
-assert len(set([len(v.split(',')) for v in VLLM_CONFIG])) == 1, "every vllm same"
+assert len(set([len(v.split(',')) for v in GENERATE_GPU_CONFIG])) == 1, "every vllm same"
 
 # Model-related parameters
 MAX_MODEL_LEN = 4096  # Maximum model input length in tokens
 TRAIN_MAX_GENERATE_LEN = 3000
 EVAL_MAX_GENERATE_LEN = 3000
-MAX_NUM_SEQ = 48 * len(VLLM_CONFIG)  # The number of sequences processed simultaneously per vLLM worker
+MAX_NUM_SEQ = 48 * len(GENERATE_GPU_CONFIG)  # The number of sequences processed simultaneously per vLLM worker
 INT_NUM = 1024  # The number of sequences per training iteration
 ITER_NUM = 200  # The number of iter
 TEST_FREQ = 5  # 
@@ -70,9 +71,10 @@ ASSISTANT_TOKEN = 'assistant' #
 # 需要根据数据集格式编写build_msgs函数和build_sol函数
 def build_msgs(row, dataset, num_generations):
     question = row['problem']
+    # {"role":"system", "content": SYS_SET}, 
     msgs = [
         [{"role":"system", "content": SYS_SET}, 
-        {"role": "user", "content": question}]
+         {"role": "user", "content": question}]
         for _ in range(num_generations)
     ]
 

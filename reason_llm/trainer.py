@@ -43,9 +43,7 @@ from transformers import (
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.utils import is_peft_available
 
-from trl.models import prepare_deepspeed
-from trl.data_utils import maybe_apply_chat_template
-
+# from trl.data_utils import maybe_apply_chat_template
 
 from peft import LoraConfig, PeftModel
 
@@ -298,7 +296,8 @@ class GRPOTrainer(Trainer):
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
         
-        prompts_text = [maybe_apply_chat_template({'messages': example['completion'] }, self.processing_class)["text"] for example in inputs]
+        prompts_text = [self.processing_class.apply_chat_template(example['completion'], tokenize=False) for example in inputs]
+        # prompts_text = [maybe_apply_chat_template({'messages': example['completion'] }, self.processing_class)["text"] for example in inputs]
         prompt_inputs = self.processing_class(
             prompts_text, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
         )['input_ids']
@@ -360,8 +359,8 @@ class GRPOTrainer(Trainer):
 
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        # loss = ((per_token_loss * mask).sum(dim=1) / mask.sum(dim=1)).mean()
-        loss = (per_token_loss * mask).sum() / (batch_size * MAX_MODEL_LEN)
+        loss = ((per_token_loss * mask).sum(dim=1) / mask.sum(dim=1)).mean()
+        # loss = (per_token_loss * mask).sum() / (batch_size * MAX_MODEL_LEN)
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)
@@ -449,9 +448,10 @@ if __name__ == '__main__':
     #     trainer.train(checkpoint_path)
 
     # # for vllm
-    # trainer.save_model(os.path.join(model_dir, 'lora'))
+    # model.merge_and_unload()
+    # trainer.save_model(os.path.join(model_dir, 'merge'))
     # if torch.distributed.get_rank() == 0:
-    #     trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'lora'))
+    #     trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))
 
     # ############# LoRA END ###################
     

@@ -1,4 +1,4 @@
 
-from .coordinator import TrainingSamplingCoordinator
+from .manager import LLMTrainingManager
 
-__all__ = ['TrainingSamplingCoordinator']
+__all__ = ['LLMTrainingManager']

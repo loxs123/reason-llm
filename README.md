@@ -14,7 +14,7 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 - Supports Lora fine-tuning
 
 **🚀 Accelerated Performance**
-- VLLM-powered sampling acceleration
+- vllm/lmdeploy-powered sampling acceleration
 
 **🧩 Production-Ready Design**
 - Simple directory structure
@@ -39,7 +39,8 @@ A cutting-edge framework for efficient GRPO algorithm implementation with VLLM a
 ```bash
 git clone https://github.com/loxs123/reason-llm.git
 cd reason-llm
-pip install vllm
+pip install vllm # [use vllm backend]
+# or pip install lmdeploy # [use lmdeploy backend]
 pip install -e . 
 # export HF_ENDPOINT=https://hf-mirror.com # if use mirror
 ```
