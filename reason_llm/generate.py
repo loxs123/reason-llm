@@ -74,7 +74,7 @@ elif GENERATE_BACKEND == 'vllm':
                 )
                 for p in prompts
             ]
-            outputs = self.llm.generate(formatted_prompts, sampling_params=_sampling_params, use_tqdm=False)
+            outputs = self.llm.generate(formatted_prompts, sampling_params=_sampling_params)
             return [
                 prompt + [{"role": "assistant", "content": output.outputs[0].text}]
                 # prompt + [{"role": "assistant", "content": remove_stutter(output.outputs[0].text)}]
