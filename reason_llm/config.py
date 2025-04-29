@@ -18,7 +18,7 @@ gradient_accumulation_steps = 32  # Number of gradient accumulation steps to sim
 GPU = "0,1,2,3"  # GPU device IDs to train model
 GPU_NUM = len(GPU.split(","))  # Number of available GPUs
 
-GENERATE_BACKEND = 'vllm' # or vllm/lmdeploy/sglang
+GENERATE_BACKEND = 'vllm' # or vllm[recommend]/lmdeploy/sglang
 GENERATE_GPU_CONFIG = ['0','1','2','3']  # vLLM resource allocation, where each string represents a GPU allocation
 GENERATE_PER_WORKER_GPU = len(GENERATE_GPU_CONFIG[0].split(','))  # Number of GPUs allocated per vLLM task
 
