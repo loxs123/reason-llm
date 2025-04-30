@@ -342,7 +342,7 @@ class GRPOTrainer(Trainer):
             advantages = advantages.unsqueeze(1)
         
         if self.args.use_gpg:
-            per_token_loss = - per_token_logps * advantages.unsqueeze(1)
+            per_token_loss = - per_token_logps * advantages
         else:
             coef_1 = torch.exp(per_token_logps - old_per_token_logps)
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
