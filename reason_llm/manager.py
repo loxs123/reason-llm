@@ -122,10 +122,12 @@ class LLMTrainingManager:
             sliced_rewards = np.array(rewards[i:i + num_generations])
             acc_rate = acc_rates[i // num_generations]
 
-            if acc_rate <= 0.01 or acc_rate >= 0.99:
+            if USE_DYNAMIC_BATCH and acc_rate <= 0.01 or acc_rate >= 0.99:
                 continue
 
             advantages = sliced_rewards - sliced_rewards.mean()
+            if SCALE_ADV_WITH_STD:
+                advantages /= sliced_rewards.std() + 1e-8
 
             for msg, adv, r in zip(completions[i:i + num_generations], advantages, sliced_rewards):
                 buffer_samples.append({

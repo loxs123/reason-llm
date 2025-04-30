@@ -44,8 +44,11 @@ EPSILON_LOW = 0.2  # PPO algorithm clip ratio, controlling the update magnitude 
 EPSILON_HIGH = 0.2  # PPO algorithm clip ratio, controlling the update magnitude of the policy
 LR = 3e-6  # Learning rate
 KL_ESTIMATOR = 'k2' # 
-USE_TOKEN_LEVEL_ADV = 1
+USE_TOKEN_LEVEL_ADV = 0
 TOKEN_LEVEL_BETA = 0.2
+USE_GPG = True
+USE_DYNAMIC_BATCH = True
+SCALE_ADV_WITH_STD = False  # Whether to scale the reward
 
 # Generation-related parameters
 NUM_GENERATIONS = 8 # 

@@ -125,6 +125,11 @@ class GRPOConfig(TrainingArguments):
         metadata={'help': 'token level beta'}
     )
 
+    use_gpg: bool = field(
+        default=USE_GPG,
+        metadata={"help": "use gpg."},
+    )
+
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
 
@@ -335,12 +340,15 @@ class GRPOTrainer(Trainer):
             advantages = advantages.unsqueeze(1) * advantages_beta.detach()
         else:
             advantages = advantages.unsqueeze(1)
-
-        coef_1 = torch.exp(per_token_logps - old_per_token_logps)
-        coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
-        per_token_loss1 = coef_1 * advantages
-        per_token_loss2 = coef_2 * advantages
-        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        
+        if self.args.use_gpg:
+            per_token_loss = - per_token_logps * advantages.unsqueeze(1)
+        else:
+            coef_1 = torch.exp(per_token_logps - old_per_token_logps)
+            coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
+            per_token_loss1 = coef_1 * advantages
+            per_token_loss2 = coef_2 * advantages
+            per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         if self.beta > 0.0:
             # [2 - last] logps
             # ref_per_token_logps = [example['ref_per_token_logps'] for example in inputs]
@@ -360,7 +368,6 @@ class GRPOTrainer(Trainer):
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
         loss = ((per_token_loss * mask).sum(dim=1) / mask.sum(dim=1)).mean()
-        # loss = (per_token_loss * mask).sum() / (batch_size * MAX_MODEL_LEN)
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)
