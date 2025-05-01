@@ -375,9 +375,10 @@ class GRPOTrainer(Trainer):
         if self.beta != 0.0:
             mean_kl = ((per_token_kl * mask).sum(dim=1) / (mask.sum(dim=1) + 1e-4)).mean()
             self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
-        is_clipped = (per_token_loss1 < per_token_loss2).float()
-        clip_ratio = (is_clipped * mask).sum() / mask.sum()
-        self._metrics["clip_ratio"].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
+        if not self.args.use_gpg:
+            is_clipped = (per_token_loss1 < per_token_loss2).float()
+            clip_ratio = (is_clipped * mask).sum() / mask.sum()
+            self._metrics["clip_ratio"].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
 
         return loss
     
