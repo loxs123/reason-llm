@@ -70,8 +70,8 @@ config_file : `reason_llm/config.py`
 config list : `configs/*.py`
 In multi-GPU training, do not forget update `num_processes` in `reason_llm/deepspeed_zero3.yaml` to match the number of GPUs.
 deepseek : Need to modify `tokenizer_config.json` https://zhuanlan.zhihu.com/p/21465667399
-CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file "reason_llm/ds_cfgs/deepspeed_zero2.yaml" reason_llm/grpo_trainer.py # for test
-CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch --config_file "reason_llm/ds_cfgs/deepspeed_zero3.yaml" reason_llm/grpo_trainer.py # for test
+CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file "reason_llm/ds_cfgs/deepspeed_zero2.yaml" reason_llm/trainer.py # for test
+CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch --config_file "reason_llm/ds_cfgs/deepspeed_zero3.yaml" reason_llm/trainer.py # for test
 ```
 ### Some experiences and tips.
 
