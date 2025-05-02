@@ -44,6 +44,7 @@ from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.utils import is_peft_available
 
 # from trl.data_utils import maybe_apply_chat_template
+import torch.distributed as dist
 
 from peft import LoraConfig, PeftModel
 
@@ -128,6 +129,11 @@ class GRPOConfig(TrainingArguments):
     use_gpg: bool = field(
         default=USE_GPG,
         metadata={"help": "use gpg."},
+    )
+
+    train_max_len: int = field(
+        default = TRAIN_MAX_LEN,
+        metadata = {"help" : "max train len"}
     )
 
 if is_peft_available():
@@ -305,7 +311,7 @@ class GRPOTrainer(Trainer):
         # prompts_text = [maybe_apply_chat_template({'messages': example['completion'] }, self.processing_class)["text"] for example in inputs]
         prompt_inputs = self.processing_class(
             prompts_text, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False
-        )['input_ids']
+        )['input_ids'][:, :self.args.train_max_len]
 
         seq_len = prompt_inputs.size(1) - 1
         batch_size = prompt_inputs.size(0)
@@ -494,3 +500,5 @@ if __name__ == '__main__':
 
     if torch.distributed.get_rank() == 0:
         trainer.tokenizer.save_pretrained(os.path.join(model_dir, 'merge'))
+    
+    dist.destroy_process_group()
