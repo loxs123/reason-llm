@@ -29,7 +29,8 @@ assert len(set([len(v.split(',')) for v in GENERATE_GPU_CONFIG])) == 1, "every v
 MAX_MODEL_LEN = 4096  # Maximum model input length in tokens
 TRAIN_MAX_GENERATE_LEN = 3000
 EVAL_MAX_GENERATE_LEN = 3000
-MAX_NUM_SEQ = 48 * len(GENERATE_GPU_CONFIG)  # The number of sequences processed simultaneously per vLLM worker
+TRAIN_MAX_LEN = 3000
+MAX_NUM_SEQ = 256 * len(GENERATE_GPU_CONFIG)  # The number of sequences processed simultaneously per vLLM worker
 INT_NUM = 1024  # The number of sequences per training iteration
 ITER_NUM = 200  # The number of iter
 TEST_FREQ = 5  # 
@@ -58,13 +59,12 @@ SYS_SET = 'Please reason step by step, and put your final answer within \\boxed{
 assert MAX_NUM_SEQ % NUM_GENERATIONS == 0
 
 # Training and testing datasets
-TRAIN_DATASET = "/root/lanyun-tmp/reason-llm/data/math_12k"  # Training dataset
-TEST_DATASETS = ["/root/lanyun-tmp/reason-llm/data/aime",  # 30
-                 '/root/lanyun-tmp/reason-llm/data/minerva', # 272
-                 '/root/lanyun-tmp/reason-llm/data/olympiad_bench', # 675
-                 '/root/lanyun-tmp/reason-llm/data/amc', # 45
-                 '/root/lanyun-tmp/reason-llm/data/math', # 500
-                ]
+TRAIN_DATASET = "hiyouga/math12k"  # Training dataset
+TEST_DATASETS = ["Maxwell-Jia/AIME_2024",  # 30
+                 "math-ai/amc23",
+                 "math-ai/math500",
+                 "knoveleng/OlympiadBench",
+                 "math-ai/minervamath"]
 
 START_TRAIN_IDX = 0 # The train_idx from the last training process.
 
@@ -73,7 +73,10 @@ ASSISTANT_TOKEN = 'assistant' #
 
 # 需要根据数据集格式编写build_msgs函数和build_sol函数
 def build_msgs(row, dataset, num_generations):
-    question = row['problem']
+    if 'question' in row:
+        question = row['question']
+    else:
+        question = row['problem']
     # {"role":"system", "content": SYS_SET}, 
     msgs = [
         [{"role":"system", "content": SYS_SET}, 
@@ -85,5 +88,7 @@ def build_msgs(row, dataset, num_generations):
 
 def build_sol(row, dataset):
     # row中所有的key已经变为小写
+    if dataset == 'knoveleng/OlympiadBench':
+        return row['final_answer']
     return row['answer']
     # return '\\boxed{'+ row['answer'] + '}'
